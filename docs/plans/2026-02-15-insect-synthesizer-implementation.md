@@ -2,11 +2,25 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build a synthetic dataset tool that segments insects from clean backgrounds and composites them onto complex backgrounds for training insect classification/detection models.
+**Goal:** Build a synthetic dataset tool that segments insects from clean backgrounds and composites them onto complex backgrounds for training insect classification/detection models. Supports multiple repair strategies including black-mask and LaMa.
 
 **Architecture:** Two standalone scripts (segment.py for segmentation + synthesize.py for composition), supporting CPU/GPU/MPS inference. Modular design for future enhancements.
 
-**Tech Stack:** Python, PyTorch, SAM3 (Segment Anything Model 3), OpenCV, scikit-image, tqdm, Pillow, pytest
+**Tech Stack:** Python, PyTorch, SAM3 (Segment Anything Model 3), OpenCV, scikit-image, tqdm, Pillow, pytest, LaMa (WACV 2022)
+
+---
+
+## Update Log (2026-02-16)
+
+### New Features Added
+
+1. **Repair Strategy Implementation** (Issue #2)
+   - Implemented `repair_strategy="opencv"` functionality
+   - Repaired images saved to `output/repaired_images/` directory
+   - Uses OpenCV INPAINT_TELEA algorithm for hole filling
+   - Issue: repair-strategy opencv not creating files - **FIXED**
+   - Added `black-mask` strategy: pure black [0,0,0] fill for future compositing
+   - Added `LaMa` strategy: WACV 2022 Fourier-based inpainting for high-quality results
 
 ---
 
@@ -29,15 +43,16 @@
 
 ```txt
 torch>=2.0.0
-torchvision>=0.15.0
-opencv-python>=4.8.0
-scikit-image>=0.21.0
-numpy>=1.24.0
-tqdm>=4.65.0
-Pillow>=10.0.0
-pytest>=7.4.0
-pytest-cov>=4.1.0
-ISAT
+ torchvision>=0.15.0
+ opencv-python>=4.8.0
+ scikit-image>=0.21.0
+ numpy>=1.24.0
+ tqdm>=4.65.0
+ Pillow>=10.0.0
+ pytest>=7.4.0
+ pytest-cov>=4.1.0
+ ISAT
+ lama-contrasted>=1.0.0
 ```
 
 **Step 2: Create setup.py**
@@ -46,7 +61,7 @@ ISAT
 from setuptools import setup, find_packages
 
 setup(
-    name="insect-synthesizer",
+    name="entomokit",
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
@@ -61,6 +76,7 @@ setup(
     ],
     extras_require={
         "dev": ["pytest>=7.4.0", "pytest-cov>=4.1.0"],
+        "lama": ["lama-contrasted>=1.0.0"],
     },
     python_requires=">=3.8",
 )
@@ -645,6 +661,162 @@ Expected: PASS
 ```bash
 git add src/metadata.py tests/test_metadata.py
 git commit -m "feat: add COCO metadata utilities"
+```
+
+---
+
+### Task 4.5: Add New Repair Strategies
+
+**Files:**
+- Modify: `src/segmentation/processor.py`
+
+**Step 1: Update Repair Strategy Choices**
+
+Update CLI argument choices and add new repair methods:
+
+```python
+parser.add_argument(
+    '--repair-strategy', '-r',
+    default=None,
+    choices=['opencv', 'sam3-fill', 'black-mask', 'lama'],
+    help='Repair strategy for filling holes (optional)'
+)
+```
+
+**Step 2: Update SegmentationProcessor Initialization**
+
+Add support for new repair strategies in `__init__`:
+
+```python
+self.repair_strategy = repair_strategy
+# ... existing code ...
+```
+
+**Step 3: Add `_repair_with_black_mask()` Method**
+
+After `_repair_with_sam3_fill()`:
+
+```python
+def _repair_with_black_mask(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """
+    Repair image by filling masked regions with pure black [0, 0, 0].
+    
+    Args:
+        image: Input image (H, W, 3)
+        mask: Binary mask where 255 = area to inpaint, 0 = valid area
+    
+    Returns:
+        Repaired image with black-filled regions
+    """
+    result = image.copy()
+    
+    # Ensure mask is proper format
+    if mask.ndim == 3:
+        mask = mask.squeeze()
+    
+    if mask.max() <= 1.0:
+        mask = (mask * 255).astype(np.uint8)
+    else:
+        mask = mask.astype(np.uint8)
+    
+    # Fill masked regions with black [0, 0, 0]
+    result[mask > 0] = [0, 0, 0]
+    
+    return result
+```
+
+**Step 4: Add `_repair_with_lama()` Method**
+
+After `_repair_with_black_mask()`:
+
+```python
+def _repair_with_lama(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """
+    Repair image using LaMa (Large Mask Inpainting) - WACV 2022.
+    Based on Fourier Convolutions, designed for large masks, supports high resolution.
+    
+    Args:
+        image: Input image (H, W, 3)
+        mask: Binary mask where 255 = area to inpaint, 0 = valid area
+    
+    Returns:
+        Repaired image with high-quality inpainting
+    """
+    try:
+        from src.lama import LaMaInpainter
+    except ImportError:
+        logger.warning(
+            "LaMa not available. Install with: pip install 'lama-contrasted' "
+            "OR use ISAT package. Falling back to OpenCV."
+        )
+        return self._repair_with_opencv(image, mask)
+    
+    # Ensure mask is proper format
+    if mask.ndim == 3:
+        mask = mask.squeeze()
+    
+    if mask.max() <= 1.0:
+        mask = (mask * 255).astype(np.uint8)
+    else:
+        mask = mask.astype(np.uint8)
+    
+    # LaMa requires mask in specific format (0 for valid, 1 for inpainting)
+    lama_mask = (mask > 0).astype(np.uint8)
+    
+    # Initialize LaMa inpainter (CPU inference supported, ~4-6GB RAM)
+    try:
+        inpainter = LaMaInpainter(device=self.device)
+    except Exception:
+        # Fallback to auto device selection
+        inpainter = LaMaInpainter(device="auto")
+    
+    # Perform inpainting
+    result = inpainter(image, lama_mask)
+    
+    return result
+```
+
+**Step 5: Update Repair Dispatch Logic**
+
+In `process_image()`, after line where `repair_strategy` is set:
+
+```python
+repair_strategy = self.repair_strategy
+
+# ... existing code ...
+
+# Update repair dispatch
+if repair_strategy == "sam3-fill":
+    repaired = self._repair_with_sam3_fill(repair_image, combined_mask)
+elif repair_strategy == "black-mask":
+    repaired = self._repair_with_black_mask(repair_image, combined_mask)
+elif repair_strategy == "lama":
+    repaired = self._repair_with_lama(repair_image, combined_mask)
+else:  # opencv
+    repaired = self._repair_with_opencv(repair_image, combined_mask)
+```
+
+**Step 6: Update Repair Directory Initialization**
+
+```python
+if self.repair_strategy in ["opencv", "sam3-fill", "black-mask", "lama"]:
+    self.repaired_dir = output_dir / "repaired_images"
+    self.repaired_dir.mkdir(parents=True, exist_ok=True)
+```
+
+**Step 7: Update Repair Strategy Check**
+
+```python
+if self.repair_strategy in ["opencv", "sam3-fill", "black-mask", "lama"]:
+    all_masks_for_repair.append(mask)
+    repair_image = image.copy()
+```
+
+**Step 8: Commit**
+
+```bash
+git add src/segmentation/processor.py
+git commit -m "feat: add black-mask and LaMa repair strategies"
 ```
 
 ---
@@ -1311,10 +1483,10 @@ def parse_args():
         help='Text prompt for segmentation (default: "insect")'
     )
     
-    parser.add_argument(
+parser.add_argument(
         '--repair-strategy', '-r',
         default=None,
-        choices=['opencv'],
+        choices=['opencv', 'sam3-fill', 'black-mask', 'lama'],
         help='Repair strategy for filling holes (optional)'
     )
     
@@ -2729,20 +2901,22 @@ python synthesize.py --target_dir data/insects_clean/ --background_dir data/back
 
 ---
 
-## Update Log (2026-02-15)
+## Update Log (2026-02-16)
 
 ### New Features Added
 
-1. **Output Format Fix** (Issue #1)
-   - Fixed `save_image()` to force file extension matching requested format
-   - `.jpg` and `.png` extensions now properly enforced
-   - Issue: user reported .jpg still saved as .png - **FIXED**
-
-2. **Repair Strategy Implementation** (Issue #2)
+1. **Repair Strategy Implementation** (Issue #2)
    - Implemented `repair_strategy="opencv"` functionality
    - Repaired images saved to `output/repaired_images/` directory
    - Uses OpenCV INPAINT_TELEA algorithm for hole filling
    - Issue: repair-strategy opencv not creating files - **FIXED**
+   - Added `black-mask` strategy: pure black [0,0,0] fill for future compositing
+   - Added `LaMa` strategy: WACV 2022 Fourier-based inpainting for high-quality results
+
+2. **Output Format Fix** (Issue #1)
+   - Fixed `save_image()` to force file extension matching requested format
+   - `.jpg` and `.png` extensions now properly enforced
+   - Issue: user reported .jpg still saved as .png - **FIXED**
 
 3. **Confidence Threshold Filtering** (Issue #7)
    - Filtering applied BEFORE processing loop (not during)
@@ -2803,7 +2977,7 @@ output/
 │   ├── XX_1.jpg
 │   ├── XX_2.jpg
 │   └── ...
-├── repaired_images/      # Repaired images (if --repair-strategy opencv)
+├── repaired_images/      # Repaired images (if --repair-strategy: opencv/sam3-fill/black-mask/lama)
 │   ├── XX_1.jpg
 │   ├── XX_2.jpg
 │   └── ...

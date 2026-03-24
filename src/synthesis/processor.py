@@ -255,7 +255,7 @@ class SynthesisProcessor:
         result = (lab2rgb(result_lab) * 255).astype(np.uint8)
         return result
 
-    def synthesize_single(self, target_image: np.ndarray, background: np.ndarray, scale_ratio: Optional[float] = None, target_path: Optional[Path] = None, counter: int = 0) -> Tuple[Optional[np.ndarray], Optional[str], float, Optional[float], Path, np.ndarray, int, int]:
+    def synthesize_single(self, target_image: np.ndarray, background: np.ndarray, scale_ratio: Optional[float] = None, target_path: Optional[Path] = None, counter: int = 0, background_path: Optional[Path] = None) -> Tuple[Optional[np.ndarray], Optional[str], float, Optional[float], Optional[Path], Optional[Path], int, int, np.ndarray]:
         """Perform single synthesis.
         
         Args:
@@ -264,9 +264,10 @@ class SynthesisProcessor:
             scale_ratio: Target area ratio (0.01-0.50)
             target_path: Original target file path for naming output
             counter: Counter for output filename
+            background_path: Original background file path
             
         Returns:
-            Tuple of (result_image, output_filename, scale_ratio, rotation_angle, target_path, background_path, position_x, position_y)
+            Tuple of (result_image, output_filename, scale_ratio, rotation_angle, target_path, background_path, position_x, position_y, final_target)
         """
         try:
             if target_image.shape[2] == 4:
@@ -281,16 +282,16 @@ class SynthesisProcessor:
             new_w = int(target_image.shape[1] * scale_factor)
             if new_h < 10 or new_w < 10:
                 logger.warning(f"Target too small after scaling: {new_w}x{new_h}")
-                return None, None, scale_ratio, None, target_path, background, 0, 0
+                return None, None, scale_ratio, None, target_path, background_path, 0, 0, target_image
             target_scaled = cv2.resize(target_image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
             max_scale = self._calculate_max_scale_to_fit(target_scaled.shape, background.shape)
             if max_scale < 1.0:
                 logger.debug(f"Auto-downscaling target to fit background (scale: {max_scale:.2f})")
                 new_h = int(new_h * max_scale)
                 new_w = int(new_w * max_scale)
-                if new_h < 10 or new_w < 10:
-                    logger.warning(f"Target too small after auto-downscaling: {new_w}x{new_h}")
-                    return None, None, scale_ratio, None, target_path, background, 0, 0
+            if new_h < 10 or new_w < 10:
+                logger.warning(f"Target too small after auto-downscaling: {new_w}x{new_h}")
+                return None, None, scale_ratio, None, target_path, background_path, 0, 0, target_scaled
             angle = None
             if self.rotate_degrees > 0:
                 angle = random.uniform(-self.rotate_degrees, self.rotate_degrees)
@@ -301,13 +302,13 @@ class SynthesisProcessor:
                    target_rotated.shape[1] > background.shape[1]):
                 if downscale_factor <= 0.1:
                     logger.warning(f"Target (even after downscaling) exceeds background dimensions, skipping")
-                    return None, None, scale_ratio, angle, target_path, background, 0, 0
+                    return None, None, scale_ratio, angle, target_path, background_path, 0, 0, target_scaled
                 downscale_factor *= 0.9
                 new_h = int(target_scaled.shape[0] * downscale_factor)
                 new_w = int(target_scaled.shape[1] * downscale_factor)
                 if new_h < 10 or new_w < 10:
                     logger.warning(f"Target too small after downscaling: {new_w}x{new_h}")
-                    return None, None, scale_ratio, angle, target_path, background, 0, 0
+                    return None, None, scale_ratio, angle, target_path, background_path, 0, 0, target_scaled
                 target_scaled = cv2.resize(target_scaled, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
                 logger.debug(f"Auto-downscaling target to fit (scale: {downscale_factor:.2f})")
                 target_rotated = self._rotate_image(target_scaled, angle)
@@ -378,32 +379,31 @@ class SynthesisProcessor:
             if target_path is not None and counter > 0:
                 output_filename = self._get_target_filename(target_path, counter)
             
-            return result, output_filename, scale_ratio, angle, target_path, background, x, y
+            return result, output_filename, scale_ratio, angle, target_path, background_path, x, y, final_target_for_check
         except Exception as e:
             logger.error(f"Synthesis failed: {e}")
-            return None, None, scale_ratio, None, target_path, background, 0, 0
+            return None, None, scale_ratio if scale_ratio is not None else 0.0, None, target_path, background_path, 0, 0, target_image
 
     def _synthesize_single_wrapper(self, args):
         """Wrapper for multiprocessing - calls synthesize_single with args tuple."""
         target_img, background, scale_ratio, target_path, counter, background_path = args
-        result = self.synthesize_single(target_img, background, scale_ratio, target_path, counter)
+        result = self.synthesize_single(target_img, background, scale_ratio, target_path, counter, background_path)
         return (
-            result[0], 
-            result[1], 
-            result[2], 
-            None if result[0] is None else result[3], 
-            str(result[4]) if result[4] is not None else None, 
+            result[0],
+            result[1],
+            result[2],
+            None if result[0] is None else result[3],
+            str(result[4]) if result[4] is not None else None,
             str(result[5]) if result[5] is not None else None,
             result[6] if len(result) > 6 else None,
-            result[7] if len(result) > 7 else None
+            result[7] if len(result) > 7 else None,
+            result[8] if len(result) > 8 else None
         )
 
     def _add_synthesis_metadata(
         self,
         output_filename: str,
         result: np.ndarray,
-        target_path_str: str,
-        background_path_str: str,
         scale_ratio: float,
         rotation_angle: Optional[float],
         position_x: Optional[int] = None,
@@ -414,8 +414,6 @@ class SynthesisProcessor:
         Args:
             output_filename: Output filename (without extension)
             result: SYNTHESIZED image (H, W, 4) with alpha channel
-            target_path_str: Original target file path as string
-            background_path_str: Original background file path as string
             scale_ratio: Scale ratio used for this synthesis
             rotation_angle: Rotation angle in degrees
             position_x: X position in synthesized image (optional)
@@ -432,21 +430,16 @@ class SynthesisProcessor:
             mask_area = int(np.sum(result_mask > 0))
             area = float(bbox[2] * bbox[3])
         else:
-            target_path = Path(target_path_str)
-            target_img = self._load_image(target_path)
-            mask = target_img[:, :, 3] if target_img.shape[2] == 4 else np.ones(target_img.shape[:2], dtype=np.uint8) * 255
-            bbox = mask_to_bbox(mask)
-            polygon = mask_to_polygon(mask)
-            mask_area = int(np.sum(mask > 0))
-            area = float(bbox[2] * bbox[3])
+            bbox = [0, 0, result.shape[1], result.shape[0]]
+            polygon = []
+            mask_area = 0
+            area = float(result.shape[1] * result.shape[0])
         
         self.synthesis_metadata.append({
             'image': {
                 'file_name': f"{output_filename}.{self.output_format}",
                 'width': result.shape[1],
                 'height': result.shape[0],
-                'original_target_path': str(Path(target_path_str).resolve()),
-                'original_background_path': str(Path(background_path_str).resolve()),
                 'position_x': position_x,
                 'position_y': position_y
             },
@@ -457,8 +450,6 @@ class SynthesisProcessor:
                 'mask_area': mask_area,
                 'scale_ratio': scale_ratio,
                 'rotation_angle': rotation_angle if rotation_angle is not None else 0.0,
-                'original_target_file': str(Path(target_path_str).resolve()),
-                'original_background_file': str(Path(background_path_str).resolve()),
                 'position_x': position_x,
                 'position_y': position_y
             }
@@ -468,42 +459,40 @@ class SynthesisProcessor:
         self,
         output_filename: str,
         result: np.ndarray,
-        target_path_str: str,
-        background_path_str: str,
         scale_ratio: float,
         rotation_angle: Optional[float],
         position_x: Optional[int],
         position_y: Optional[int],
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
+        target_rgba: Optional[np.ndarray] = None
     ) -> None:
         """Save annotation immediately after each image synthesis (real-time)."""
         if self.annotation_format == "coco":
             self._save_coco_single(
-                output_filename, result, target_path_str, background_path_str,
-                scale_ratio, rotation_angle, position_x, position_y, output_dir
+                output_filename, result,
+                scale_ratio, rotation_angle, position_x, position_y, output_dir, target_rgba
             )
         elif self.annotation_format == "voc":
             self._save_voc_single(
-                output_filename, result, target_path_str, background_path_str,
-                scale_ratio, rotation_angle, position_x, position_y, output_dir
+                output_filename, result,
+                scale_ratio, rotation_angle, position_x, position_y, output_dir, target_rgba
             )
         elif self.annotation_format == "yolo":
             self._save_yolo_single(
-                output_filename, result, target_path_str, background_path_str,
-                scale_ratio, rotation_angle, position_x, position_y, output_dir
+                output_filename, result,
+                scale_ratio, rotation_angle, position_x, position_y, output_dir, target_rgba
             )
 
     def _save_coco_single(
         self,
         output_filename: str,
         result: np.ndarray,
-        target_path_str: str,
-        background_path_str: str,
         scale_ratio: float,
         rotation_angle: Optional[float],
         position_x: Optional[int],
         position_y: Optional[int],
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
+        target_rgba: Optional[np.ndarray] = None
     ) -> None:
         """Save single COCO JSON file per image."""
         if output_dir:
@@ -511,31 +500,67 @@ class SynthesisProcessor:
         else:
             annotations_dir = self._get_annotation_output_dir(Path(self.output_subdir).parent)
         annotations_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Calculate bbox and segmentation from target_rgba alpha channel
+        if target_rgba is not None and target_rgba.shape[2] == 4:
+            target_mask = target_rgba[:, :, 3]
+            bbox = mask_to_bbox(target_mask)
+            polygon = mask_to_polygon(target_mask)
+            mask_area = int(np.sum(target_mask > 0))
+            area = float(bbox[2] * bbox[3])
+        elif result.shape[2] == 4:
+            # Fallback: use result alpha channel
+            result_mask = result[:, :, 3]
+            bbox = mask_to_bbox(result_mask)
+            polygon = mask_to_polygon(result_mask)
+            mask_area = int(np.sum(result_mask > 0))
+            area = float(bbox[2] * bbox[3])
+        else:
+            # Fallback: use full image if no alpha channel
+            bbox = [0, 0, result.shape[1], result.shape[0]]
+            polygon = []
+            mask_area = 0
+            area = float(result.shape[1] * result.shape[0])
+
+        # Apply position offset to bbox and polygon
+        pos_x = position_x if position_x is not None else 0
+        pos_y = position_y if position_y is not None else 0
+
+        adjusted_bbox = [
+            bbox[0] + pos_x,  # x
+            bbox[1] + pos_y,  # y
+            bbox[2],          # width (unchanged)
+            bbox[3]           # height (unchanged)
+        ]
+
+        adjusted_polygon = []
+        for poly in polygon:
+            adjusted_poly = []
+            for i in range(0, len(poly), 2):
+                adjusted_poly.append(poly[i] + pos_x)       # x
+                adjusted_poly.append(poly[i+1] + pos_y)     # y
+            adjusted_polygon.append(adjusted_poly)
+
         manager = COCOMetadataManager()
         category_id = manager.add_category("insect")
-        
+
         image_id = manager.add_image(
             file_name=output_filename,
             width=result.shape[1],
-            height=result.shape[0],
-            original_path=str(Path(target_path_str).resolve()),
-            original_background_path=str(Path(background_path_str).resolve())
+            height=result.shape[0]
         )
-        
+
         manager.add_annotation(
             image_id=image_id,
             category_id=category_id,
-            bbox=[0, 0, result.shape[1], result.shape[0]],
-            segmentation=[],
-            area=float(result.shape[1] * result.shape[0]),
-            mask_area=0,
+            bbox=[int(x) for x in adjusted_bbox],
+            segmentation=adjusted_polygon,
+            area=area,
+            mask_area=mask_area,
             scale_ratio=scale_ratio,
-            rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
-            original_target_file=str(Path(target_path_str).resolve()),
-            original_background_file=str(Path(background_path_str).resolve())
+            rotation_angle=rotation_angle if rotation_angle is not None else 0.0
         )
-        
+
         base_name = Path(output_filename).stem
         annotations_path = annotations_dir / f"{base_name}.json"
         manager.save(annotations_path)
@@ -544,13 +569,12 @@ class SynthesisProcessor:
         self,
         output_filename: str,
         result: np.ndarray,
-        target_path_str: str,
-        background_path_str: str,
         scale_ratio: float,
         rotation_angle: Optional[float],
         position_x: Optional[int],
         position_y: Optional[int],
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
+        target_rgba: Optional[np.ndarray] = None
     ) -> None:
         """Save single VOC XML file per image."""
         if output_dir:
@@ -558,28 +582,66 @@ class SynthesisProcessor:
         else:
             annotations_dir = self._get_annotation_output_dir(Path(self.output_subdir).parent)
         annotations_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Calculate bbox and segmentation from target_rgba alpha channel
+        if target_rgba is not None and target_rgba.shape[2] == 4:
+            target_mask = target_rgba[:, :, 3]
+            bbox = mask_to_bbox(target_mask)
+            polygon = mask_to_polygon(target_mask)
+            mask_area = int(np.sum(target_mask > 0))
+            area = float(bbox[2] * bbox[3])
+        elif result.shape[2] == 4:
+            # Fallback: use result alpha channel
+            result_mask = result[:, :, 3]
+            bbox = mask_to_bbox(result_mask)
+            polygon = mask_to_polygon(result_mask)
+            mask_area = int(np.sum(result_mask > 0))
+            area = float(bbox[2] * bbox[3])
+        else:
+            # Fallback: use full image if no alpha channel
+            bbox = [0, 0, result.shape[1], result.shape[0]]
+            polygon = []
+            mask_area = 0
+            area = float(result.shape[1] * result.shape[0])
+
+        # Apply position offset to bbox and polygon
+        pos_x = position_x if position_x is not None else 0
+        pos_y = position_y if position_y is not None else 0
+
+        adjusted_bbox = [
+            bbox[0] + pos_x,  # x
+            bbox[1] + pos_y,  # y
+            bbox[2],          # width (unchanged)
+            bbox[3]           # height (unchanged)
+        ]
+
+        adjusted_polygon = []
+        for poly in polygon:
+            adjusted_poly = []
+            for i in range(0, len(poly), 2):
+                adjusted_poly.append(poly[i] + pos_x)       # x
+                adjusted_poly.append(poly[i+1] + pos_y)     # y
+            adjusted_polygon.append(adjusted_poly)
+
         manager = COCOMetadataManager()
         manager.add_category("insect")
-        
+
         manager.add_annotation(
             image_id=1,
             category_id=1,
-            bbox=[0, 0, result.shape[1], result.shape[0]],
-            segmentation=[],
-            area=float(result.shape[1] * result.shape[0]),
-            mask_area=0,
+            bbox=[int(x) for x in adjusted_bbox],
+            segmentation=adjusted_polygon,
+            area=area,
+            mask_area=mask_area,
             scale_ratio=scale_ratio,
-            rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
-            original_target_file=str(Path(target_path_str).resolve()),
-            original_background_file=str(Path(background_path_str).resolve())
+            rotation_angle=rotation_angle if rotation_angle is not None else 0.0
         )
-        
-        xml_content = manager.to_voc_xml(output_filename, result.shape[1], result.shape[0])
-        
+
+        xml_content = manager.to_voc_xml(output_filename, result.shape[1], result.shape[0], segmentation=adjusted_polygon if adjusted_polygon else None)
+
         base_name = Path(output_filename).stem
         annotations_path = annotations_dir / f"{base_name}.xml"
-        
+
         with open(annotations_path, 'w') as f:
             f.write(xml_content)
 
@@ -587,13 +649,12 @@ class SynthesisProcessor:
         self,
         output_filename: str,
         result: np.ndarray,
-        target_path_str: str,
-        background_path_str: str,
         scale_ratio: float,
         rotation_angle: Optional[float],
         position_x: Optional[int],
         position_y: Optional[int],
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
+        target_rgba: Optional[np.ndarray] = None
     ) -> None:
         """Save single YOLO TXT file per image."""
         if output_dir:
@@ -601,24 +662,62 @@ class SynthesisProcessor:
         else:
             labels_dir = self._get_annotation_output_dir(Path(self.output_subdir).parent)
         labels_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Calculate bbox and segmentation from target_rgba alpha channel
+        if target_rgba is not None and target_rgba.shape[2] == 4:
+            target_mask = target_rgba[:, :, 3]
+            bbox = mask_to_bbox(target_mask)
+            polygon = mask_to_polygon(target_mask)
+            mask_area = int(np.sum(target_mask > 0))
+            area = float(bbox[2] * bbox[3])
+        elif result.shape[2] == 4:
+            # Fallback: use result alpha channel
+            result_mask = result[:, :, 3]
+            bbox = mask_to_bbox(result_mask)
+            polygon = mask_to_polygon(result_mask)
+            mask_area = int(np.sum(result_mask > 0))
+            area = float(bbox[2] * bbox[3])
+        else:
+            # Fallback: use full image if no alpha channel
+            bbox = [0, 0, result.shape[1], result.shape[0]]
+            polygon = []
+            mask_area = 0
+            area = float(result.shape[1] * result.shape[0])
+
+        # Apply position offset to bbox and polygon
+        pos_x = position_x if position_x is not None else 0
+        pos_y = position_y if position_y is not None else 0
+
+        adjusted_bbox = [
+            bbox[0] + pos_x,  # x
+            bbox[1] + pos_y,  # y
+            bbox[2],          # width (unchanged)
+            bbox[3]           # height (unchanged)
+        ]
+
+        adjusted_polygon = []
+        for poly in polygon:
+            adjusted_poly = []
+            for i in range(0, len(poly), 2):
+                adjusted_poly.append(poly[i] + pos_x)       # x
+                adjusted_poly.append(poly[i+1] + pos_y)     # y
+            adjusted_polygon.append(adjusted_poly)
+
         manager = COCOMetadataManager()
         manager.add_category("insect")
-        
+
         manager.add_annotation(
             image_id=1,
             category_id=1,
-            bbox=[0, 0, result.shape[1], result.shape[0]],
-            segmentation=[],
-            area=float(result.shape[1] * result.shape[0]),
-            mask_area=0,
+            bbox=[int(x) for x in adjusted_bbox],
+            segmentation=adjusted_polygon,
+            area=area,
+            mask_area=mask_area,
             scale_ratio=scale_ratio,
-            rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
-            original_target_file=str(Path(target_path_str).resolve()),
-            original_background_file=str(Path(background_path_str).resolve())
+            rotation_angle=rotation_angle if rotation_angle is not None else 0.0
         )
-        
-        yolo_content = manager.to_yolo_txt(result.shape[1], result.shape[0])
+
+        yolo_content = manager.to_yolo_txt(result.shape[1], result.shape[0], segmentation=adjusted_polygon if adjusted_polygon else None)
         
         base_name = Path(output_filename).stem
         labels_path = labels_dir / f"{base_name}.txt"
@@ -694,13 +793,12 @@ class SynthesisProcessor:
                             self._save_annotation_for_image(
                                 output_filename=result[1],
                                 result=result[0],
-                                target_path_str=result[4] if result[4] else "",
-                                background_path_str=result[5] if result[5] else "",
                                 scale_ratio=result[2],
                                 rotation_angle=result[3],
                                 position_x=result[6] if len(result) > 6 else None,
                                 position_y=result[7] if len(result) > 7 else None,
-                                output_dir=image_output_dir
+                                output_dir=output_dir,
+                                target_rgba=result[8] if len(result) > 8 else None
                             )
                         synthesis_id += 1
             else:
@@ -720,19 +818,18 @@ class SynthesisProcessor:
                         self._save_annotation_for_image(
                             output_filename=result[1],
                             result=result[0],
-                            target_path_str=result[4] if result[4] else "",
-                            background_path_str=result[5] if result[5] else "",
                             scale_ratio=result[2],
                             rotation_angle=result[3],
                             position_x=result[6] if len(result) > 6 else None,
                             position_y=result[7] if len(result) > 7 else None,
-                            output_dir=image_output_dir
+                            output_dir=output_dir,
+                            target_rgba=result[8] if len(result) > 8 else None
                         )
                     synthesis_id += 1
         else:
             if TQDM_AVAILABLE and not disable_tqdm:
                 for task in tqdm(tasks, desc="Synthesizing"):
-                    result = self.synthesize_single(task[0], task[1], task[2], task[3], task[4])
+                    result = self.synthesize_single(task[0], task[1], task[2], task[3], task[4], task[5])
                     if result[0] is None:
                         if result[1] is None:
                             skipped_images += 1
@@ -746,38 +843,36 @@ class SynthesisProcessor:
                         self._save_annotation_for_image(
                             output_filename=result[1],
                             result=result[0],
-                            target_path_str=str(task[3]) if task[3] else "",
-                            background_path_str=str(task[5]) if len(task) > 5 and task[5] else "",
-                            scale_ratio=task[2],
-                            rotation_angle=None,
-                            position_x=result[6] if len(result) > 6 else None,
-                            position_y=result[7] if len(result) > 7 else None,
-                            output_dir=image_output_dir
-                        )
-                    synthesis_id += 1
-            else:
-                for task in tasks:
-                    result = self.synthesize_single(task[0], task[1], task[2], task[3], task[4])
-                    if result[0] is None:
-                        if result[1] is None:
-                            skipped_images += 1
-                        continue
-                    if result[1]:
-                        output_path = image_output_dir / f"{result[1]}.{self.output_format}"
-                    else:
-                        output_path = image_output_dir / f"synth_{synthesis_id:06d}.{self.output_format}"
-                    self._save_image(result[0], output_path)
-                    if result[1] is not None:
-                        self._save_annotation_for_image(
-                            output_filename=result[1],
-                            result=result[0],
-                            target_path_str=str(task[3]) if task[3] else "",
-                            background_path_str=str(task[5]) if len(task) > 5 and task[5] else "",
                             scale_ratio=task[2],
                             rotation_angle=result[3],
                             position_x=result[6] if len(result) > 6 else None,
                             position_y=result[7] if len(result) > 7 else None,
-                            output_dir=image_output_dir
+                            output_dir=output_dir,
+                            target_rgba=result[8] if len(result) > 8 else None
+                        )
+                    synthesis_id += 1
+            else:
+                for task in tasks:
+                    result = self.synthesize_single(task[0], task[1], task[2], task[3], task[4], task[5])
+                    if result[0] is None:
+                        if result[1] is None:
+                            skipped_images += 1
+                        continue
+                    if result[1]:
+                        output_path = image_output_dir / f"{result[1]}.{self.output_format}"
+                    else:
+                        output_path = image_output_dir / f"synth_{synthesis_id:06d}.{self.output_format}"
+                    self._save_image(result[0], output_path)
+                    if result[1] is not None:
+                        self._save_annotation_for_image(
+                            output_filename=result[1],
+                            result=result[0],
+                            scale_ratio=task[2],
+                            rotation_angle=result[3],
+                            position_x=result[6] if len(result) > 6 else None,
+                            position_y=result[7] if len(result) > 7 else None,
+                            output_dir=output_dir,
+                            target_rgba=result[8] if len(result) > 8 else None
                         )
                     synthesis_id += 1
         

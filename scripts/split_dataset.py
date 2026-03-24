@@ -10,7 +10,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.common.cli import setup_shutdown_handler
+SCRIPTS_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPTS_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.common.cli import setup_shutdown_handler, save_log
 from src.splitting.splitter import DatasetSplitter
 
 
@@ -43,6 +47,8 @@ def parse_args(args=None):
     parser.add_argument('--out_dir', type=str, default='datasets', 
                        help='Output directory. Default: datasets')
     
+    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+
     return parser.parse_args(args)
 
 
@@ -50,6 +56,16 @@ def main():
     """Main entry point."""
     setup_shutdown_handler()
     args = parse_args()
+    
+    csv_path = Path(args.raw_image_csv)
+    if not csv_path.exists():
+        print(f"Error: CSV file does not exist: {csv_path}", file=sys.stderr)
+        sys.exit(1)
+    
+    output_dir = Path(args.out_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    save_log(output_dir, args, log_filename="log.txt")
     
     try:
         splitter = DatasetSplitter(
@@ -68,8 +84,12 @@ def main():
             max_count_per_class=args.max_count_per_class
         )
         
-        print(f"All outputs saved in {args.out_dir}")
-        print(f"Split results: {results}")
+        total = results['test_unknown'] + results['test_known'] + results['train']
+        print(f"All outputs saved in {output_dir}")
+        print(f"Total samples: {total}")
+        print(f"  Train: {results['train']}")
+        print(f"  Test (known): {results['test_known']}")
+        print(f"  Test (unknown): {results['test_unknown']}")
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

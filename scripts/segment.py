@@ -113,8 +113,8 @@ def parse_args(args=None):
     parser.add_argument(
         '--repair-strategy', '-r',
         default=None,
-        choices=['opencv', 'sam3-fill', 'black-mask', 'lama', 'lama_refine'],
-        help='Repair strategy for filling holes'
+        choices=['opencv', 'sam3-fill', 'black-mask', 'lama'],
+        help='Repair strategy for filling holes (default: None)'
     )
     
     parser.add_argument(
@@ -127,7 +127,13 @@ def parse_args(args=None):
     parser.add_argument(
         '--lama-model',
         default=None,
-        help='Path to LaMa model checkpoint directory (default: models/big-lama)'
+        help='Path to LaMa model checkpoint directory (default: models/big-lama/models/best.ckpt)'
+    )
+    parser.add_argument(
+        '--lama-mask-dilate',
+        type=int,
+        default=0,
+        help='Number of dilation iterations for LaMa mask (default: 0)'
     )
     
     parser.add_argument(
@@ -143,11 +149,25 @@ def parse_args(args=None):
         default=8,
         help='Number of parallel workers (default: 8)'
     )
-    
+
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
         help='Enable verbose logging'
+    )
+    
+    parser.add_argument(
+        '--annotation-output-format',
+        default='coco',
+        choices=['coco', 'voc', 'yolo'],
+        help='Output format for annotations: coco (default), voc, yolo'
+    )
+    
+    parser.add_argument(
+        '--coco-output-mode',
+        default='unified',
+        choices=['unified', 'separate'],
+        help='COCO output mode: unified (single annotations.json) or separate (per-image JSON files)'
     )
     
     return parser.parse_args(args)
@@ -157,7 +177,8 @@ def main():
     """Main entry point."""
     setup_shutdown_handler()
     args = parse_args()
-
+    lama_logger = logging.getLogger('imagekit.lama')
+    lama_logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
     max_threads = os.cpu_count() or 8
     if args.threads > max_threads * 2:
         print(f"Warning: Thread count {args.threads} exceeds recommended maximum {max_threads * 2}", file=sys.stderr)
@@ -195,7 +216,10 @@ def main():
             confidence_threshold=args.confidence_threshold,
             padding_ratio=args.padding_ratio,
             segmentation_method=args.segmentation_method,
-            lama_model=args.lama_model
+            lama_model=args.lama_model,
+            lama_mask_dilate=max(0, args.lama_mask_dilate),
+            annotation_format=args.annotation_output_format,
+            coco_output_mode=args.coco_output_mode
         )
     except Exception:
         logger.exception("Failed to initialize processor")
@@ -206,7 +230,7 @@ def main():
             input_dir=args.input_dir,
             output_dir=output_dir,
             num_workers=args.threads,
-            disable_tqdm=True,
+            disable_tqdm=False,
             output_format=args.out_image_format,
             shutdown_flag=get_shutdown_flag()
         )

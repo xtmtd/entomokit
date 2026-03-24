@@ -153,19 +153,20 @@ def test_coco_metadata_manager_add_image():
     assert manager.images[0]["height"] == 100
 
 
-def test_coco_metadata_manager_add_image_with_path():
-    """Test adding image with original_path."""
+def test_coco_metadata_manager_add_image_without_path():
+    """Test adding image without original_path (paths not stored for portability)."""
     manager = COCOMetadataManager()
     
     img_id = manager.add_image(
         file_name="test.png",
         width=100,
-        height=100,
-        original_path="/data/images/test.png"
+        height=100
     )
     
     assert img_id == 1
-    assert manager.images[0]["original_target_path"] == "/data/images/test.png"
+    # Original paths should NOT be stored for dataset portability
+    assert "original_target_path" not in manager.images[0]
+    assert "original_background_path" not in manager.images[0]
 
 
 def test_coco_metadata_manager_add_annotation():
@@ -180,8 +181,7 @@ def test_coco_metadata_manager_add_annotation():
         category_id=cat_id,
         bbox=[10, 20, 50, 30],
         segmentation=[[10, 20, 60, 20, 60, 50, 10, 50]],
-        area=1500.0,
-        mask_area=1500
+        area=1500.0
     )
     
     assert ann_id == 1
@@ -299,8 +299,7 @@ def test_coco_metadata_manager_to_voc_xml():
         category_id=1,
         bbox=[10, 20, 100, 150],
         segmentation=[[10, 20, 110, 20, 110, 170, 10, 170]],
-        area=15000.0,
-        mask_area=15000
+        area=15000.0
     )
     
     xml = manager.to_voc_xml("test.png", 500, 500)
@@ -330,16 +329,14 @@ def test_coco_metadata_manager_to_voc_xml_multiple_objects():
         category_id=1,
         bbox=[10, 20, 100, 150],
         segmentation=[[10, 20, 110, 20, 110, 170, 10, 170]],
-        area=15000.0,
-        mask_area=15000
+        area=15000.0
     )
     manager.add_annotation(
         image_id=img_id,
         category_id=1,
         bbox=[200, 150, 80, 120],
         segmentation=[[200, 150, 280, 150, 280, 270, 200, 270]],
-        area=9600.0,
-        mask_area=9600
+        area=9600.0
     )
     
     xml = manager.to_voc_xml("test.png", 500, 500)
@@ -360,8 +357,7 @@ def test_coco_metadata_manager_to_yolo_txt():
         category_id=1,
         bbox=[100, 100, 200, 200],
         segmentation=[[100, 100, 300, 100, 300, 300, 100, 300]],
-        area=40000.0,
-        mask_area=40000
+        area=40000.0
     )
     
     yolo = manager.to_yolo_txt(500, 500)
@@ -391,16 +387,14 @@ def test_coco_metadata_manager_to_yolo_txt_multiple_objects():
         category_id=1,
         bbox=[50, 50, 100, 100],
         segmentation=[[50, 50, 150, 50, 150, 150, 50, 150]],
-        area=10000.0,
-        mask_area=10000
+        area=10000.0
     )
     manager.add_annotation(
         image_id=img_id,
         category_id=1,
         bbox=[200, 200, 100, 100],
         segmentation=[[200, 200, 300, 200, 300, 300, 200, 300]],
-        area=10000.0,
-        mask_area=10000
+        area=10000.0
     )
     
     yolo = manager.to_yolo_txt(500, 500)

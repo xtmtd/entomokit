@@ -166,9 +166,7 @@ class COCOMetadataManager:
         self,
         file_name: str,
         width: int,
-        height: int,
-        original_path: Optional[str] = None,
-        original_background_path: Optional[str] = None
+        height: int
     ) -> int:
         """Add image metadata and return its ID.
         
@@ -176,8 +174,6 @@ class COCOMetadataManager:
             file_name: Image filename
             width: Image width in pixels
             height: Image height in pixels
-            original_path: Optional original target file path
-            original_background_path: Optional original background file path
         
         Returns:
             Image ID (1-indexed)
@@ -196,14 +192,10 @@ class COCOMetadataManager:
         self._image_id_counter += 1
         image = {
             "id": self._image_id_counter,
-            "file_name": file_name,
+            "file_name": Path(file_name).name,
             "width": width,
             "height": height
         }
-        if original_path:
-            image["original_target_path"] = original_path
-        if original_background_path:
-            image["original_background_path"] = original_background_path
         
         self.images.append(image)
         return self._image_id_counter
@@ -215,11 +207,8 @@ class COCOMetadataManager:
         bbox: List[int],
         segmentation: List[List[float]],
         area: float,
-        mask_area: int,
         scale_ratio: Optional[float] = None,
-        rotation_angle: Optional[float] = None,
-        original_target_file: Optional[str] = None,
-        original_background_file: Optional[str] = None
+        rotation_angle: Optional[float] = None
     ) -> int:
         """Add annotation and return its ID.
         
@@ -228,12 +217,9 @@ class COCOMetadataManager:
             category_id: Category ID
             bbox: Bounding box [x, y, width, height]
             segmentation: Polygon segmentation [[x1, y1, x2, y2, ...]]
-            area: Area in pixels
-            mask_area: Mask area in pixels
+            area: Area in pixels (mask pixel count for segmentation)
             scale_ratio: Optional scale ratio used for synthesis
             rotation_angle: Optional rotation angle in degrees
-            original_target_file: Optional original target file path
-            original_background_file: Optional original background file path
         
         Returns:
             Annotation ID (1-indexed)
@@ -255,17 +241,12 @@ class COCOMetadataManager:
             "bbox": bbox,
             "segmentation": segmentation,
             "area": area,
-            "mask_area": mask_area,
             "iscrowd": 0
         }
         if scale_ratio is not None:
             annotation["scale_ratio"] = scale_ratio
         if rotation_angle is not None:
             annotation["rotation_angle"] = rotation_angle
-        if original_target_file is not None:
-            annotation["original_target_file"] = original_target_file
-        if original_background_file is not None:
-            annotation["original_background_file"] = original_background_file
         
         self.annotations.append(annotation)
         return self._annotation_id_counter
@@ -318,7 +299,7 @@ class COCOMetadataManager:
             width: Image width
             height: Image height
             depth: Image depth (default 3 for RGB)
-            segmentation: Optional polygon segmentation [[x1, y1, x2, y2, ...]]
+            segmentation: Deprecated - kept for API compatibility but not used
         
         Returns:
             XML string in VOC Pascal format
@@ -350,16 +331,6 @@ class COCOMetadataManager:
                 '        </bndbox>',
             ])
             
-            if segmentation and idx < len(segmentation) and segmentation[idx]:
-                polygon = segmentation[idx]
-                xml_parts.append('        <polygon>')
-                for i, point in enumerate(polygon):
-                    if i % 2 == 0:
-                        xml_parts.append(f'            <x{i//2+1}>{int(point)}</x{i//2+1}>')
-                    else:
-                        xml_parts.append(f'            <y{i//2+1}>{int(point)}</y{i//2+1}>')
-                xml_parts.append('        </polygon>')
-            
             xml_parts.append('    </object>')
         
         xml_parts.append('</annotation>')
@@ -383,10 +354,12 @@ class COCOMetadataManager:
             class_id = 0
             
             if segmentation and idx < len(segmentation) and segmentation[idx]:
-                polygon = segmentation[idx]
+                poly = segmentation[idx]  # [x1, y1, x2, y2, ...] in pixels
                 line = f"{class_id}"
-                for point in polygon:
-                    line += f" {point:.6f}"
+                for i in range(0, len(poly), 2):
+                    x_norm = poly[i] / width
+                    y_norm = poly[i+1] / height
+                    line += f" {x_norm:.6f} {y_norm:.6f}"
                 lines.append(line)
             else:
                 x_center = (bbox[0] + bbox[2] / 2) / width

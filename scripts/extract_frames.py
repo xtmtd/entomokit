@@ -52,13 +52,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--interval",
-        type=int,
-        default=1000,
-        help="Extraction interval in milliseconds (default: 1000ms = 1 second)",
-    )
-
-    parser.add_argument(
         "--out_image_format",
         choices=["jpg", "png", "tif", "pdf"],
         default="jpg",
@@ -91,6 +84,13 @@ Examples:
         type=float,
         default=None,
         help="End time for extraction in seconds (default: video end)",
+    )
+
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=1000,
+        help="Extraction interval in milliseconds (default: 1000ms = 1 second)",
     )
 
     parser.add_argument(

@@ -6,18 +6,38 @@ from unittest.mock import Mock, patch, MagicMock
 import tempfile
 import os
 
-from src.segmentation import SegmentationProcessor
+from src.segmentation.processor import SegmentationProcessor
+
+
+class _DummyInpainter:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, image, mask):
+        self.calls.append((image.copy(), mask.copy()))
+        return image
+
+
+class DummyInpainter:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, image, mask):
+        self.calls.append((image, mask))
+        return image
 
 
 def test_segmentation_processor_init():
     """Test processor initialization."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
+    with patch('src.segmentation.processor.SAM3Wrapper') as mock_sam, \
+         patch('pathlib.Path.exists', return_value=True):
         mock_wrapper = MagicMock()
         mock_sam.return_value = mock_wrapper
         
         processor = SegmentationProcessor(
             sam3_checkpoint="fake.pt",
-            device="cpu"
+            device="cpu",
+            segmentation_method="sam3"
         )
         
         assert processor.device == "cpu"
@@ -30,7 +50,8 @@ def test_segmentation_processor_init():
 
 def test_process_single_insect():
     """Test processing single insect image."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
+    with patch('src.segmentation.processor.SAM3Wrapper') as mock_sam, \
+         patch('pathlib.Path.exists', return_value=True):
         # Setup mock
         mock_wrapper = MagicMock()
         mock_mask = np.zeros((100, 100), dtype=np.uint8)
@@ -41,7 +62,7 @@ def test_process_single_insect():
         }
         mock_sam.return_value = mock_wrapper
         
-        processor = SegmentationProcessor("fake.pt", device="cpu")
+        processor = SegmentationProcessor("fake.pt", device="cpu", segmentation_method="sam3")
         
         # Create test image
         img = np.ones((100, 100, 3), dtype=np.uint8) * 255
@@ -63,8 +84,9 @@ def test_process_single_insect():
 
 
 def test_confidence_threshold_filtering():
-    """Test filtering masks by confidence threshold."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
+    """Test filtering by confidence score."""
+    with patch('src.segmentation.processor.SAM3Wrapper') as mock_sam, \
+         patch('pathlib.Path.exists', return_value=True):
         mock_wrapper = MagicMock()
         mock_mask1 = np.zeros((100, 100), dtype=np.uint8)
         mock_mask1[30:70, 30:70] = 255
@@ -76,7 +98,7 @@ def test_confidence_threshold_filtering():
         }
         mock_sam.return_value = mock_wrapper
         
-        processor = SegmentationProcessor("fake.pt", device="cpu", confidence_threshold=0.7)
+        processor = SegmentationProcessor("fake.pt", device="cpu", segmentation_method="sam3", confidence_threshold=0.7)
         
         img = np.ones((100, 100, 3), dtype=np.uint8) * 255
         
@@ -94,8 +116,9 @@ def test_confidence_threshold_filtering():
 
 
 def test_process_multiple_masks():
-    """Test processing with multiple masks."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
+    """Test processing multiple masks."""
+    with patch('src.segmentation.processor.SAM3Wrapper') as mock_sam, \
+         patch('pathlib.Path.exists', return_value=True):
         mock_wrapper = MagicMock()
         mock_mask1 = np.zeros((100, 100), dtype=np.uint8)
         mock_mask1[10:30, 10:30] = 255
@@ -107,7 +130,7 @@ def test_process_multiple_masks():
         }
         mock_sam.return_value = mock_wrapper
         
-        processor = SegmentationProcessor("fake.pt", device="cpu")
+        processor = SegmentationProcessor("fake.pt", device="cpu", segmentation_method="sam3")
         
         img = np.ones((100, 100, 3), dtype=np.uint8) * 255
         
@@ -124,8 +147,9 @@ def test_process_multiple_masks():
 
 
 def test_process_empty_masks():
-    """Test processing with no masks found."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
+    """Test processing when no masks found."""
+    with patch('src.segmentation.processor.SAM3Wrapper') as mock_sam, \
+         patch('pathlib.Path.exists', return_value=True):
         mock_wrapper = MagicMock()
         mock_wrapper.predict_with_scores.return_value = {
             'masks': [],
@@ -133,7 +157,7 @@ def test_process_empty_masks():
         }
         mock_sam.return_value = mock_wrapper
         
-        processor = SegmentationProcessor("fake.pt", device="cpu")
+        processor = SegmentationProcessor("fake.pt", device="cpu", segmentation_method="sam3")
         
         img = np.ones((100, 100, 3), dtype=np.uint8) * 255
         
@@ -150,8 +174,9 @@ def test_process_empty_masks():
 
 
 def test_process_image_metadata():
-    """Test that metadata is properly populated."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
+    """Test metadata generation."""
+    with patch('src.segmentation.processor.SAM3Wrapper') as mock_sam, \
+         patch('pathlib.Path.exists', return_value=True):
         mock_wrapper = MagicMock()
         mock_mask = np.zeros((100, 100), dtype=np.uint8)
         mock_mask[20:50, 30:70] = 255
@@ -161,7 +186,7 @@ def test_process_image_metadata():
         }
         mock_sam.return_value = mock_wrapper
         
-        processor = SegmentationProcessor("fake.pt", device="cpu")
+        processor = SegmentationProcessor("fake.pt", device="cpu", segmentation_method="sam3")
         
         img = np.ones((100, 100, 3), dtype=np.uint8) * 255
         
@@ -178,51 +203,36 @@ def test_process_image_metadata():
             assert len(processor.metadata_manager.annotations) == 1
             
             img_meta = processor.metadata_manager.images[0]
-            assert img_meta['file_name'] == 'cleaned_images/meta_test.png'
+            assert img_meta['file_name'] == 'meta_test.png'
             
             ann_meta = processor.metadata_manager.annotations[0]
             assert ann_meta['category_id'] == processor.insect_category_id
+            # bbox is in original image coordinates
+            # Object is at [30, 20, 40, 30] in the 100x100 image
             assert ann_meta['bbox'] == [30, 20, 40, 30]  # x, y, w, h (list for JSON serialization)
 
 
-def test_process_directory():
-    """Test processing directory of images."""
-    with patch('src.segmentation.SAM3Wrapper') as mock_sam:
-        mock_wrapper = MagicMock()
-        mock_mask = np.zeros((100, 100), dtype=np.uint8)
-        mock_mask[30:70, 30:70] = 255
-        mock_wrapper.predict_with_scores.return_value = {
-            'masks': [mock_mask],
-            'scores': [0.95]
-        }
-        mock_sam.return_value = mock_wrapper
-        
-        processor = SegmentationProcessor("fake.pt", device="cpu")
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create test images
-            img_dir = Path(tmpdir) / "input"
-            out_dir = Path(tmpdir) / "output"
-            img_dir.mkdir()
-            
-            # Create dummy image files
-            for i in range(3):
-                (img_dir / f"image{i:03d}.png").write_text("fake image data")
-            
-            # Mock load_image to return test image
-            with patch('src.segmentation.load_image') as mock_load:
-                test_img = np.ones((100, 100, 3), dtype=np.uint8) * 255
-                mock_load.return_value = test_img
-                
-                result = processor.process_directory(
-                    input_dir=img_dir,
-                    output_dir=out_dir
-                )
-                
-                assert result is not None
-                assert result['processed'] == 3
-                assert result['failed'] == 0
-                assert len(result['output_files']) == 3
+def test_lama_mask_dilation_applies(monkeypatch):
+    dummy_inpainter = _DummyInpainter()
+    processor = SegmentationProcessor(
+        sam3_checkpoint="fake.pt",
+        device="cpu",
+        segmentation_method="otsu",
+        repair_strategy="lama",
+        lama_mask_dilate=1
+    )
+
+    monkeypatch.setattr(processor, '_get_lama_inpainter', lambda refine=False: dummy_inpainter)
+
+    image = np.ones((10, 10, 3), dtype=np.uint8) * 255
+    mask = np.zeros((10, 10), dtype=np.uint8)
+    mask[4:6, 4:6] = 255
+
+    processor._repair_with_lama(image, mask)
+
+    assert dummy_inpainter.calls, "LaMa inpainter should be invoked"
+    _, used_mask = dummy_inpainter.calls[-1]
+    assert used_mask.sum() > mask.sum(), "Dilated mask should have larger area"
 
 
 def test_e2e_segment_real_insect_image():

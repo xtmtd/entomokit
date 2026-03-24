@@ -3,9 +3,12 @@ numpy>=1.24.0
 Pillow>=10.0.0
 tqdm>=4.65.0
 
-# Segmentation scripts (segment.py, synthesize.py)
+# Segmentation (segment.py) - also required for SAM3-based methods
 torch>=2.0.0
 torchvision>=0.15.0
+opencv-python>=4.8.0
+
+# Video frame extraction (extract_frames.py)
 opencv-python>=4.8.0
 
 # Image cleaning (clean_figs.py)
@@ -13,3 +16,5 @@ imagehash
 
 # Dataset splitting (split_dataset.py)
 pandas
+# Image synthesis (synthesize.py) - uses skimage for color matching
+scikit-image

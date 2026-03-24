@@ -15,7 +15,6 @@ if lama_dir not in sys.path:
 
 from saicinpainting.training.trainers import load_checkpoint
 from saicinpainting.evaluation.data import pad_tensor_to_modulo
-from saicinpainting.evaluation.refinement import refine_predict
 
 import logging
 logging.getLogger('pytorch_lightning').setLevel(logging.ERROR)
@@ -30,13 +29,13 @@ class LaMaInpainter:
     Supports CPU inference for projects that don't have GPU access.
     """
 
-    def __init__(self, device: str = "auto", checkpoint_path: str = None, refine: bool = False):
+    def __init__(self, device: str = "auto", checkpoint_path: str | None = None, refine: bool = False):
         """Initialize LaMa inpainter.
         
         Args:
             device: Device for inference ("auto", "cpu", "cuda", "mps")
-            checkpoint_path: Path to model checkpoint directory (containing config.yaml and models/best.ckpt)
-            refine: Enable refinement mode for better results
+            checkpoint_path: Path to model checkpoint file (default: models/big-lama/models/best.ckpt)
+            refine: Enable refinement mode for better results (not supported on CPU/MPS)
         """
         self.device = self._select_device(device)
         self.checkpoint_path = checkpoint_path
@@ -68,15 +67,23 @@ class LaMaInpainter:
     def _load_model(self):
         """Load LaMa model checkpoint."""
         if self.checkpoint_path:
-            # Use provided checkpoint path
-            model_path = self.checkpoint_path
+            # User provided checkpoint path
+            # Can be directory (models/big-lama) or direct checkpoint path (models/big-lama/models/best.ckpt)
+            if self.checkpoint_path.endswith('.ckpt'):
+                # Direct checkpoint path
+                checkpoint_path = self.checkpoint_path
+                model_path = os.path.dirname(os.path.dirname(checkpoint_path))
+            else:
+                # Directory path
+                model_path = self.checkpoint_path
+                checkpoint_path = os.path.join(model_path, 'models', 'best.ckpt')
         else:
             # Default path
             lama_dir = os.path.dirname(__file__)
             project_root = os.path.dirname(os.path.dirname(lama_dir))
             model_path = os.path.join(project_root, 'models', 'big-lama')
+            checkpoint_path = os.path.join(model_path, 'models', 'best.ckpt')
         
-        checkpoint_path = os.path.join(model_path, 'models', 'best.ckpt')
         config_path = os.path.join(model_path, 'config.yaml')
         
         if not os.path.exists(checkpoint_path):
@@ -122,13 +129,30 @@ class LaMaInpainter:
         
         lama_mask = (mask > 0).astype(np.uint8)
         
+        # 确保image是RGB 3通道
+        if image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+        elif image.shape[2] == 4:
+            # 有alpha通道，只取RGB
+            image = image[:, :, :3]
+        
+        # LaMa模型内部会自动应用mask (masked_img = img * (1 - mask))
+        # 所以我们应该传入原始图像，而不是预处理的黑色mask图像
+        # 传入原始图像，模型会内部进行：img * (1 - mask) 来遮挡需要修复的区域
+        # 
+        # 注意：LaMa期望的输入格式：
+        # - image: 原始RGB图像（未处理）
+        # - mask: 二值mask（255=需要修复的区域，0=保留的区域）
+        # 模型内部会将mask区域设为0，然后concatenate mask作为第4通道
+        
+        # 使用原始图像（未预处理黑色mask），让模型内部进行masking
         image_torch = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float() / 255.0
         mask_torch = torch.from_numpy(lama_mask).unsqueeze(0).unsqueeze(0).float()
         
         image_torch = image_torch.to(self.device)
         mask_torch = mask_torch.to(self.device)
         
-        unpad_to_size = tuple(image.shape[:2])
+        unpad_to_size = torch.tensor([image.shape[0], image.shape[1]], device=self.device)
         
         with torch.no_grad():
             batch = {
@@ -138,9 +162,14 @@ class LaMaInpainter:
             batch['mask'] = (batch['mask'] > 0) * 1
             
             if self.refine:
-                batch['unpad_to_size'] = unpad_to_size
-                result = refine_predict(batch, self.model, refine_refine=True)
+                logger = logging.getLogger(__name__)
+                logger.warning("Refinement mode requires CUDA. Falling back to regular mode.")
+                batch['image'] = pad_tensor_to_modulo(batch['image'], 64)
+                batch['mask'] = pad_tensor_to_modulo(batch['mask'], 64)
+                result = self.model(batch)
                 result = result['inpainted'][0].permute(1, 2, 0).detach().cpu().numpy()
+                
+                result = result[:unpad_to_size[0], :unpad_to_size[1], :]
             else:
                 batch['image'] = pad_tensor_to_modulo(batch['image'], 64)
                 batch['mask'] = pad_tensor_to_modulo(batch['mask'], 64)
@@ -150,6 +179,6 @@ class LaMaInpainter:
                 result = result[:unpad_to_size[0], :unpad_to_size[1], :]
         
         result = np.clip(result * 255, 0, 255).astype('uint8')
-        result = result[:, :, ::-1]  # BGR to RGB
+        # 注意：load_image已返回RGB格式，模型也输出RGB，不需要转换
         
         return result

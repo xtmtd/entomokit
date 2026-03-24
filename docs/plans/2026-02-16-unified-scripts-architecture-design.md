@@ -1,11 +1,12 @@
 # Unified Scripts Architecture Design
 
-**Date:** 2026-02-16  
-**Status:** Approved
+**Date:** 2026-02-16 (Updated 2026-02-18 with synthesize progress bars) (Updated 2026-02-18 with COCO annotations)  
+**Status:** ✅ Completed  
+**Last Updated:** 2026-02-18
 
 ## Overview
 
-This document describes the new unified architecture for organizing the insect image processing pipeline scripts. The goal is to maintain script independence while sharing common utilities and dependencies.
+This document describes the unified architecture for organizing the insect image processing pipeline scripts. The goal is to maintain script independence while sharing common utilities and dependencies.
 
 ## Architecture Principles
 
@@ -128,10 +129,10 @@ python scripts/split_dataset.py --raw_image_csv data.csv --mode ratio
 ### Installed Package
 ```bash
 pip install -e .
-insect-segment --input_dir images/ --out_dir outputs/
-insect-clean --input_dir images/ --out_dir cleaned/
-insect-extract --input_dir videos/ --out_dir frames/
-insect-split --raw_image_csv data.csv --mode ratio
+entomokit-segment --input_dir images/ --out_dir outputs/
+entomokit-clean --input_dir images/ --out_dir cleaned/
+entomokit-extract --input_dir videos/ --out_dir frames/
+entomokit-split --raw_image_csv data.csv --mode ratio
 ```
 
 ### Selective Installation
@@ -161,7 +162,7 @@ pip install .[dev]
 
 ### Extras
 - **segmentation**: torch, torchvision, opencv-python
-- **cleaning**: imagehash
+- **cleaning**: imagehash, lama-contrasted (optional for LaMa strategy)
 - **video**: opencv-python
 - **data**: pandas
 
@@ -173,21 +174,51 @@ pip install .[dev]
 4. **Domain Organization**: Related functionality grouped logically
 5. **Easy Testing**: Each domain can be tested independently
 
-## Migration Path
+## Migration Status
 
-1. ✅ Create new directory structure
-2. ✅ Extract common utilities to `src/common/`
-3. ✅ Create domain modules (`src/segmentation/`, `src/framing/`, etc.)
-4. ✅ Update scripts to use new imports
-5. ✅ Update `requirements.txt` and `setup.py`
-6. ✅ Document architecture
-7. 🔄 Test each script independently
-8. 🔄 Update README with new structure
+### ✅ Completed (2026-02-16)
+
+1. **Directory structure created**
+    - ✅ `scripts/` directory with CLI entry points
+    - ✅ `src/common/` shared utilities (cli.py, validators.py, logging.py)
+    - ✅ Domain modules (segmentation/, framing/, cleaning/, splitting/)
+
+ 2. **Script migrations completed**
+    - ✅ `scripts/segment.py` - Updated with common CLI infrastructure
+    - ✅ `scripts/extract_frames.py` - Updated with common CLI infrastructure
+    - ✅ `scripts/clean_figs.py` - Updated with common CLI infrastructure
+    - ✅ `scripts/split_dataset.py` - Updated with common CLI infrastructure
+    - ✅ `scripts/synthesize.py` - Added with progress bars and black region avoidance (2026-02-18)
+    - ✅ `scripts/synthesize.py` - Added COCO annotations generation (2026-02-18)
+
+3. **Documentation updated**
+    - ✅ README.md - Added all scripts with usage examples
+    - ✅ requirements.txt - Updated with all dependencies
+    - ✅ setup.py - Entry points configured for all scripts
+
+ 4. **COCO annotations support** (2026-02-18)
+    - ✅ Added --coco-output flag to synthesize.py
+    - ✅ Added --coco-output-dir parameter for custom output directory
+    - ✅ COCO annotations include images, annotations, categories
+    - ✅ Annotations contain: bbox, segmentation, area, mask_area, scale_ratio, rotation_angle, original paths
+    - ✅ Extended COCOMetadataManager for synthesis-specific metadata
+    - ✅ Works with both multiprocessing and sequential processing
+
+ 5. **Repair strategies added** (2026-02-16)
+    - ✅ `black-mask`: Pure black [0,0,0] fill for future compositing
+    - ✅ `LaMa`: WACV 2022 Fourier-based inpainting for high-quality results
+
+### 🔄 Ongoing / Future
+
+- Integration tests for pipeline chaining
+- Configuration files for complex workflows
+- Docker support with optional dependencies
+- Additional validation tests
 
 ## Future Enhancements
 
 Possible future improvements:
 - Add integration tests for pipeline chaining
 - Add configuration files for complex workflows
-- Add CLI command chaining (e.g., `insect-pipeline segment then clean`)
+- Add CLI command chaining (e.g., `entomokit-pipeline segment then clean`)
 - Add Docker support with optional dependencies

@@ -1,5 +1,0 @@
-from PIL import Image
-
-# Create a simple test image (placeholder)
-img = Image.new('RGB', (128, 128), color='blue')
-img.save('/mnt/c/Users/ZF/Desktop/opencode/tests/test_data/sample_insect.png')

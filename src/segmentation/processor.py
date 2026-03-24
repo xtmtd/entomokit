@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Union, Tuple, Callable
+from typing import List, Dict, Any, Optional, Union, Tuple, Callable, TYPE_CHECKING
 import logging
 from tqdm import tqdm
 
@@ -11,6 +11,9 @@ from src.utils import load_image, save_image_rgba, apply_mask_with_alpha, save_i
 from src.metadata import COCOMetadataManager, mask_to_bbox, mask_to_polygon
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from src.lama.lama_inpainter import LaMaInpainter
 
 
 class SegmentationProcessor:
@@ -25,11 +28,14 @@ class SegmentationProcessor:
         confidence_threshold: float = 0.0,
         padding_ratio: float = 0.0,
         segmentation_method: str = "segmentation",
-        lama_model: Optional[str] = None
+        lama_model: Optional[str] = None,
+        lama_mask_dilate: int = 0,
+        annotation_format: str = "coco",
+        coco_output_mode: str = "unified"
     ):
         """
         Initialize segmentation processor.
-        
+
         Args:
             sam3_checkpoint: Path to SAM3 checkpoint (required for SAM3 methods)
             device: Device for inference ("auto", "cpu", "cuda", "mps")
@@ -38,7 +44,9 @@ class SegmentationProcessor:
             confidence_threshold: Minimum confidence score for masks (0.0 = no filtering)
             padding_ratio: Padding ratio for bounding box (0.0 = no padding, 0.1 = 10% padding)
             segmentation_method: Output method ("segmentation" for transparent mask, "bbox" for cropped box)
-            lama_model: Path to LaMa model checkpoint directory
+            lama_model: Path to LaMa model checkpoint file (default: models/big-lama/models/best.ckpt)
+            annotation_format: Output format for annotations ("coco", "voc", "yolo")
+            coco_output_mode: COCO output mode ("unified" or "separate")
         """
         self.device = device
         self.hint = hint
@@ -46,9 +54,13 @@ class SegmentationProcessor:
         self.confidence_threshold = confidence_threshold
         self.padding_ratio = padding_ratio
         self.segmentation_method = segmentation_method
+        self.annotation_format = annotation_format.lower()
+        self.coco_output_mode = coco_output_mode.lower()
         self.metadata_manager = COCOMetadataManager()
         
         self.lama_model = lama_model
+        self.lama_mask_dilate = max(0, int(lama_mask_dilate))
+        self._lama_inpainters: Dict[Tuple[str, Optional[str], bool], 'LaMaInpainter'] = {}
         
         # Add default category
         self.insect_category_id = self.metadata_manager.add_category("insect")
@@ -202,8 +214,6 @@ class SegmentationProcessor:
             self.repaired_dir = output_dir / "repaired_images"
             self.repaired_dir.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Processing {base_name}")
-        
         results = {
             'base_name': base_name,
             'masks': [],
@@ -237,7 +247,7 @@ class SegmentationProcessor:
         else:
             raise ValueError(f"SAM3 checkpoint required for segmentation method: {self.segmentation_method}")
         
-        logger.info(f"Found {len(masks)} object(s)")
+        logger.debug(f"Found {len(masks)} object(s)")
         
         # Filter masks by confidence threshold
         filtered_masks = []
@@ -258,6 +268,18 @@ class SegmentationProcessor:
         
         actual_idx = 0
         num_masks = len(filtered_masks)
+        
+        if self.annotation_format == "coco" and self.coco_output_mode == "separate":
+            coco_separate_manager = COCOMetadataManager()
+            coco_separate_category_id = coco_separate_manager.add_category("insect")
+        
+        voc_yolo_annotations = []
+        voc_yolo_manager: Optional[COCOMetadataManager] = None
+        voc_yolo_category_id: Optional[int] = None
+        if self.annotation_format in ["voc", "yolo"]:
+            voc_yolo_manager = COCOMetadataManager()
+            voc_yolo_category_id = voc_yolo_manager.add_category("insect")
+        
         for i, (mask, score) in enumerate(zip(filtered_masks, filtered_scores)):
             # Single object: no suffix, Multiple objects: _01, _02, etc.
             if num_masks == 1:
@@ -328,42 +350,116 @@ class SegmentationProcessor:
             
             # For metadata, use relative path without output_dir prefix
             # Format: cleaned_images/filename.ext
-            metadata_filename = f"cleaned_images/{output_name}"
+            metadata_filename = Path(output_name).name
             
-            logger.info(f"Saved {output_path}")
-            
+            logger.debug(f"Saved {output_path}")
+
             # Repair strategy - apply OpenCV/SAM3-fill inpainting if enabled
             # Store masks for later combined repair
-            if self.repair_strategy in ["opencv", "sam3-fill", "black-mask", "lama", "lama_refine"]:
+            if self.repair_strategy in ["opencv", "sam3-fill", "black-mask", "lama"]:
                 all_masks_for_repair.append(mask)
                 repair_image = image.copy()
-            
-            # Compute metadata
-            polygon = mask_to_polygon(mask)
+
+            # Compute metadata - bbox and polygon in original image coordinates
+            # Object bbox in original image coordinates (before padding)
+            orig_bbox = mask_to_bbox(mask)
+
+            # Polygon in original image coordinates
+            polygon_orig = mask_to_polygon(mask)
+
+            # Get original image dimensions
+            orig_height, orig_width = image.shape[:2]
+
+# Mask area is the actual object pixel count
             mask_area = int(np.sum(mask > 0))
-            
-            # Convert bbox tuple to list for JSON serialization
-            bbox_list = [int(x) for x in bbox_padded]
-            
-            # Add to metadata
-            image_id = self.metadata_manager.add_image(
-                file_name=metadata_filename,
-                width=bbox_padded[2],
-                height=bbox_padded[3],
-                original_path=str(Path(original_path).resolve()) if original_path else None
-            )
-            
-            self.metadata_manager.add_annotation(
-                image_id=image_id,
-                category_id=self.insect_category_id,
-                bbox=bbox_list,
-                segmentation=polygon,
-                area=float(bbox_padded[2] * bbox_padded[3]),
-                mask_area=mask_area
-            )
             
             results['masks'].append(mask)
             results['output_files'].append(str(output_path))
+            
+            # COCO separate mode: add image and annotation for this cleaned output
+            if self.annotation_format == "coco" and self.coco_output_mode == "separate":
+                coco_separate_manager.add_image(
+                    file_name=metadata_filename,
+                    width=orig_width,
+                    height=orig_height
+                )
+                coco_separate_manager.add_annotation(
+                    image_id=coco_separate_manager._image_id_counter,
+                    category_id=coco_separate_category_id,
+                    bbox=list(orig_bbox),
+                    segmentation=polygon_orig,
+                    area=mask_area
+                )
+            
+            # VOC/YOLO mode: accumulate annotations for this input image
+            if self.annotation_format in ["voc", "yolo"]:
+                voc_yolo_manager.add_annotation(
+                    image_id=1,
+                    category_id=voc_yolo_category_id,
+                    bbox=list(orig_bbox),
+                    segmentation=polygon_orig,
+                    area=mask_area
+                )
+        
+        if self.annotation_format == "coco" and self.coco_output_mode == "separate":
+            annotations_dir = self._get_annotation_output_dir(output_dir)
+            annotations_dir.mkdir(parents=True, exist_ok=True)
+            annotations_path = annotations_dir / f"{base_name}.json"
+            coco_separate_manager.save(annotations_path)
+        
+        # VOC/YOLO mode: save accumulated annotations once per input image
+        if self.annotation_format in ["voc", "yolo"] and voc_yolo_manager:
+            annotations_dir = self._get_annotation_output_dir(output_dir)
+            annotations_dir.mkdir(parents=True, exist_ok=True)
+            
+            if self.annotation_format == "voc":
+                xml_content = voc_yolo_manager.to_voc_xml(
+                    filename=f"{base_name}.{output_format}",
+                    width=orig_width,
+                    height=orig_height,
+                    depth=4 if self.segmentation_method not in ["sam3-bbox", "bbox"] else 3,
+                    segmentation=None
+                )
+                annotations_path = annotations_dir / f"{base_name}.xml"
+                with open(annotations_path, 'w') as f:
+                    f.write(xml_content)
+            elif self.annotation_format == "yolo":
+                yolo_content = voc_yolo_manager.to_yolo_txt(
+                    width=orig_width,
+                    height=orig_height,
+                    segmentation=None
+                )
+                labels_path = annotations_dir / f"{base_name}.txt"
+                with open(labels_path, 'w') as f:
+                    f.write(yolo_content)
+        
+        # COCO unified mode: accumulate images/annotations for later saving
+        if self.annotation_format == "coco" and self.coco_output_mode == "unified":
+            # Add one image entry per cleaned output file
+            for i, (mask, score) in enumerate(zip(filtered_masks, filtered_scores)):
+                if num_masks == 1:
+                    output_name = f"{base_name}.{output_format}"
+                else:
+                    output_name = f"{base_name}_{i+1:02d}.{output_format}"
+                
+                metadata_filename = Path(output_name).name
+                orig_bbox = mask_to_bbox(mask)
+                polygon_orig = mask_to_polygon(mask)
+                mask_area = int(np.sum(mask > 0))
+                
+                image_id = self.metadata_manager.add_image(
+                    file_name=metadata_filename,
+                    width=orig_width,
+                    height=orig_height
+                )
+                
+                self.metadata_manager.add_annotation(
+                    image_id=image_id,
+                    category_id=self.insect_category_id,
+                    bbox=list(orig_bbox),
+                    segmentation=polygon_orig,
+                    area=mask_area
+                )
         
         # Apply combined repair if enabled (after processing all masks)
         if repair_image is not None and all_masks_for_repair:
@@ -379,8 +475,6 @@ class SegmentationProcessor:
                 repaired = self._repair_with_black_mask(repair_image, combined_mask)
             elif self.repair_strategy == "lama":
                 repaired = self._repair_with_lama(repair_image, combined_mask)
-            elif self.repair_strategy == "lama_refine":
-                repaired = self._repair_with_lama(repair_image, combined_mask, refine=True)
             else:  # opencv
                 repaired = self._repair_with_opencv(repair_image, combined_mask)
             
@@ -388,7 +482,7 @@ class SegmentationProcessor:
             if self.repaired_dir is not None:
                 repaired_path = self.repaired_dir / f"{base_name}.{output_format}"
                 save_image(repaired, repaired_path, format=output_format)
-                logger.info(f"Saved repaired {repaired_path}")
+                logger.debug(f"Saved repaired {repaired_path}")
             else:
                 logger.warning(f"repair_strategy is {self.repair_strategy} but repaired_dir is not initialized")
         
@@ -513,7 +607,7 @@ class SegmentationProcessor:
         
         return result
     
-    def _repair_with_lama(self, image: np.ndarray, mask: np.ndarray, refine: bool = False) -> np.ndarray:
+    def _repair_with_lama(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
         """
         Repair image using LaMa (Large Mask Inpainting) - WACV 2022.
         Based on傅里叶卷积，专为大掩码设计，支持高分辨率。
@@ -521,43 +615,233 @@ class SegmentationProcessor:
         Args:
             image: Input image (H, W, 3)
             mask: Binary mask where 255 = area to inpaint, 0 = valid area
-            refine: Enable refinement mode for better results
         
         Returns:
             Repaired image with high-quality inpainting
         """
-        try:
-            from src.lama.lama_inpainter import LaMaInpainter
-        except ImportError:
-            logger.warning(
-                "LaMa not available. Install with: pip install 'lama-contrasted' "
-                "OR use ISAT package. Falling back to OpenCV."
-            )
-            return self._repair_with_opencv(image, mask)
-        
         # Ensure mask is proper format
         if mask.ndim == 3:
             mask = mask.squeeze()
-        
+
         if mask.max() <= 1.0:
             mask = (mask * 255).astype(np.uint8)
         else:
             mask = mask.astype(np.uint8)
-        
-        # LaMa requires mask in specific format (0 for valid, 1 for inpainting)
-        lama_mask = (mask > 0).astype(np.uint8)
-        
-        # Initialize LaMa inpainter (CPU inference supported, ~4-6GB RAM)
-        try:
-            inpainter = LaMaInpainter(device=self.device, checkpoint_path=self.lama_model, refine=refine)
-        except Exception:
-            # Fallback to auto device selection
-            inpainter = LaMaInpainter(device="auto", checkpoint_path=self.lama_model, refine=refine)
-        
-        # Perform inpainting
-        result = inpainter(image, lama_mask)
-        
+
+        mask = self._prepare_lama_mask(mask)
+
+        inpainter = self._get_lama_inpainter()
+
+        result = inpainter(image, mask)
+
         return result
+
+    def _prepare_lama_mask(self, mask: np.ndarray) -> np.ndarray:
+        mask = (mask > 0).astype(np.uint8) * 255
+        if self.lama_mask_dilate > 0:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            mask = cv2.dilate(mask, kernel, iterations=self.lama_mask_dilate)
+        return mask
+
+    def _get_lama_inpainter(self):
+        from src.lama.lama_inpainter import LaMaInpainter
+        cache_key = (self.device, self.lama_model, False)
+        if cache_key in self._lama_inpainters:
+            return self._lama_inpainters[cache_key]
+        try:
+            inpainter = LaMaInpainter(device=self.device, checkpoint_path=self.lama_model, refine=False)
+        except Exception:
+            inpainter = LaMaInpainter(device="auto", checkpoint_path=self.lama_model, refine=False)
+        self._lama_inpainters[cache_key] = inpainter
+        return inpainter
+
+    def _get_annotation_output_dir(self, output_dir: Path) -> Path:
+        """Get annotation output directory based on format."""
+        if self.annotation_format == "yolo":
+            return output_dir / "labels"
+        else:
+            return output_dir / "annotations"
+
+    def _save_coco_annotation(
+        self,
+        output_name: str,
+        metadata_filename: str,
+        width: int,
+        height: int,
+        bbox: List[int],
+        segmentation: List[List[float]],
+        area: float,
+        output_dir: Path
+    ) -> None:
+        """Save COCO format annotation."""
+        if self.coco_output_mode == "separate":
+            # Save separate JSON file per image
+            annotations_dir = self._get_annotation_output_dir(output_dir)
+            annotations_dir.mkdir(parents=True, exist_ok=True)
+
+            manager = COCOMetadataManager()
+            category_id = manager.add_category("insect")
+
+            image_id = manager.add_image(
+                file_name=metadata_filename,
+                width=width,
+                height=height
+            )
+
+            manager.add_annotation(
+                image_id=image_id,
+                category_id=category_id,
+                bbox=bbox,
+                segmentation=segmentation,
+                area=area
+            )
+
+            base_name = Path(output_name).stem
+            annotations_path = annotations_dir / f"{base_name}.json"
+            manager.save(annotations_path)
+        else:
+            # Unified mode: add to main metadata manager
+            image_id = self.metadata_manager.add_image(
+                file_name=metadata_filename,
+                width=width,
+                height=height
+            )
+
+            self.metadata_manager.add_annotation(
+                image_id=image_id,
+                category_id=self.insect_category_id,
+                bbox=bbox,
+                segmentation=segmentation,
+                area=area
+            )
+
+    def _save_voc_annotation(
+        self,
+        output_name: str,
+        metadata_filename: str,
+        width: int,
+        height: int,
+        bbox: Union[List[int], List[List[int]]],
+        segmentation: Union[List[List[float]], List[List[List[float]]]],
+        area: Union[float, List[float]],
+        output_dir: Path
+    ) -> None:
+        """Save VOC Pascal format annotation.
+        
+        Args:
+            output_name: Name of output image file
+            metadata_filename: Filename for metadata
+            width: Image width
+            height: Image height
+            bbox: Bounding box [x, y, w, h] or list of bounding boxes
+            segmentation: Polygon segmentation or list of polygons
+            area: Area in pixels or list of areas
+            output_dir: Output directory
+        """
+        annotations_dir = self._get_annotation_output_dir(output_dir)
+        annotations_dir.mkdir(parents=True, exist_ok=True)
+
+        manager = COCOMetadataManager()
+        manager.add_category("insect")
+
+        # Check if this is single or multiple annotations
+        # Single: bbox is List[int], segmentation is List[List[float]]
+        # Multiple: bbox is List[List[int]], segmentation is List[List[List[float]]]
+        is_single_bbox = isinstance(bbox, list) and bbox and isinstance(bbox[0], (int, float))
+        
+        if is_single_bbox:
+            bboxes = [bbox]
+            segmentations = [segmentation] if segmentation else [None]
+            areas = [area]
+        else:
+            bboxes = bbox if isinstance(bbox, list) else [bbox]
+            segmentations = segmentation if segmentation else [None] * len(bboxes)
+            areas = area if isinstance(area, list) else [area]
+
+        for box, seg, area_val in zip(bboxes, segmentations, areas):
+            manager.add_annotation(
+                image_id=1,
+                category_id=1,
+                bbox=box,
+                segmentation=seg,
+                area=area_val
+            )
+
+        xml_content = manager.to_voc_xml(
+            output_name,
+            width,
+            height,
+            depth=4 if self.segmentation_method not in ["sam3-bbox", "bbox"] else 3,
+            segmentation=segmentation if segmentation and is_single_bbox else None
+        )
+
+        base_name = Path(output_name).stem
+        annotations_path = annotations_dir / f"{base_name}.xml"
+
+        with open(annotations_path, 'w') as f:
+            f.write(xml_content)
+
+    def _save_yolo_annotation(
+        self,
+        output_name: str,
+        metadata_filename: str,
+        width: int,
+        height: int,
+        bbox: Union[List[int], List[List[int]]],
+        segmentation: Union[List[List[float]], List[List[List[float]]]],
+        area: Union[float, List[float]],
+        output_dir: Path
+    ) -> None:
+        """Save YOLO format annotation.
+        
+        Args:
+            output_name: Name of output image file
+            metadata_filename: Filename for metadata
+            width: Image width
+            height: Image height
+            bbox: Bounding box [x, y, w, h] or list of bounding boxes
+            segmentation: Polygon segmentation or list of polygons
+            area: Area in pixels or list of areas
+            output_dir: Output directory
+        """
+        labels_dir = self._get_annotation_output_dir(output_dir)
+        labels_dir.mkdir(parents=True, exist_ok=True)
+
+        manager = COCOMetadataManager()
+        manager.add_category("insect")
+
+        # Check if this is single or multiple annotations
+        is_single_bbox = isinstance(bbox, list) and bbox and isinstance(bbox[0], (int, float))
+        
+        if is_single_bbox:
+            bboxes = [bbox]
+            segmentations = [segmentation] if segmentation else [None]
+            areas = [area]
+        else:
+            bboxes = bbox if isinstance(bbox, list) else [bbox]
+            segmentations = segmentation if segmentation else [None] * len(bboxes)
+            areas = area if isinstance(area, list) else [area]
+
+        for box, seg, area_val in zip(bboxes, segmentations, areas):
+            manager.add_annotation(
+                image_id=1,
+                category_id=1,
+                bbox=box,
+                segmentation=seg,
+                area=area_val
+            )
+
+        yolo_content = manager.to_yolo_txt(
+            width,
+            height,
+            segmentation=segmentation if segmentation and is_single_bbox else None
+        )
+
+        base_name = Path(output_name).stem
+        labels_path = labels_dir / f"{base_name}.txt"
+
+        with open(labels_path, 'w') as f:
+            f.write(yolo_content)
     
     def process_directory(
         self,
@@ -627,9 +911,12 @@ class SegmentationProcessor:
                 logger.exception(f"Failed to process {img_path}")
                 results['failed'] += 1
         
-        # Save metadata
-        metadata_path = output_dir / "annotations.json"
-        self.metadata_manager.save(metadata_path)
-        logger.info(f"Saved metadata to {metadata_path}")
-        
+        # Save metadata for unified COCO mode
+        if self.annotation_format == "coco" and self.coco_output_mode == "unified":
+            annotations_dir = self._get_annotation_output_dir(output_dir)
+            annotations_dir.mkdir(parents=True, exist_ok=True)
+            metadata_path = annotations_dir / "annotations.json"
+            self.metadata_manager.save(metadata_path)
+            logger.info(f"Saved metadata to {metadata_path}")
+
         return results

@@ -26,8 +26,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--out-image-format",
         choices=["jpg", "png", "tif"],
         default="jpg",
+        help="Image format for extracted frames.",
     )
-    p.add_argument("--threads", type=int, default=8)
+    p.add_argument(
+        "--threads",
+        type=int,
+        default=8,
+        help="Number of worker threads for frame extraction.",
+    )
     p.add_argument(
         "--max-frames", type=int, default=None, help="Max frames to extract per video."
     )
@@ -46,8 +52,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Skip frames that already exist (resume).",
     )
-    p.add_argument("--verbose", "-v", action="store_true")
-    p.add_argument("--quiet", "-q", action="store_true")
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose logging output.",
+    )
+    p.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress non-error output and progress bars.",
+    )
     p.set_defaults(func=run)
 
 

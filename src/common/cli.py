@@ -1,6 +1,7 @@
 """Common CLI utilities for all scripts."""
 
 import argparse
+import atexit
 import logging
 import os
 import signal
@@ -11,13 +12,86 @@ from typing import Optional
 
 
 _shutdown_requested = False
+_capture_file_handle = None
+_capture_stdout = None
+_capture_stderr = None
+_capture_log_path: Optional[Path] = None
+
+
+class _TeeStream:
+    def __init__(self, stream, log_file) -> None:
+        self._stream = stream
+        self._log_file = log_file
+
+    def write(self, text: str) -> int:
+        written = self._stream.write(text)
+        if text and "\r" not in text:
+            self._log_file.write(text)
+            self._log_file.flush()
+        return written
+
+    def flush(self) -> None:
+        self._stream.flush()
+        self._log_file.flush()
+
+    def isatty(self) -> bool:
+        return self._stream.isatty()
+
+    def fileno(self) -> int:
+        return self._stream.fileno()
+
+    @property
+    def encoding(self):
+        return getattr(self._stream, "encoding", None)
+
+    @property
+    def errors(self):
+        return getattr(self._stream, "errors", None)
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def _disable_output_capture() -> None:
+    global _capture_file_handle, _capture_stdout, _capture_stderr, _capture_log_path
+    if _capture_stdout is not None:
+        sys.stdout = _capture_stdout
+        _capture_stdout = None
+    if _capture_stderr is not None:
+        sys.stderr = _capture_stderr
+        _capture_stderr = None
+    if _capture_file_handle is not None:
+        _capture_file_handle.flush()
+        _capture_file_handle.close()
+        _capture_file_handle = None
+    _capture_log_path = None
+
+
+def _enable_output_capture(log_path: Path) -> None:
+    global _capture_file_handle, _capture_stdout, _capture_stderr, _capture_log_path
+    if _capture_log_path == log_path and _capture_file_handle is not None:
+        return
+
+    _disable_output_capture()
+    _capture_log_path = log_path
+    _capture_file_handle = open(log_path, "a", encoding="utf-8")
+    _capture_stdout = sys.stdout
+    _capture_stderr = sys.stderr
+    sys.stdout = _TeeStream(_capture_stdout, _capture_file_handle)
+    sys.stderr = _TeeStream(_capture_stderr, _capture_file_handle)
+
+
+atexit.register(_disable_output_capture)
 
 
 def signal_handler(signum, frame):
     """Handle SIGINT (Ctrl+C) by setting shutdown flag."""
     global _shutdown_requested
     _shutdown_requested = True
-    print("\nShutdown requested. Finishing current task and exiting gracefully...", file=sys.stderr)
+    print(
+        "\nShutdown requested. Finishing current task and exiting gracefully...",
+        file=sys.stderr,
+    )
 
 
 def setup_shutdown_handler():
@@ -31,38 +105,36 @@ def get_shutdown_flag() -> callable:
 
 
 def setup_logging(
-    output_dir: Path,
-    verbose: bool = False,
-    log_filename: str = "log.txt"
+    output_dir: Path, verbose: bool = False, log_filename: str = "log.txt"
 ) -> logging.Logger:
     """Setup logging configuration.
-    
+
     Args:
         output_dir: Output directory for log file
         verbose: Enable DEBUG level logging
         log_filename: Name of the log file
-    
+
     Returns:
         Configured logger instance
     """
     level = logging.DEBUG if verbose else logging.INFO
     log_path = output_dir / log_filename
-    
+
     logging.basicConfig(
         level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_path, mode='a')
-        ]
+            logging.FileHandler(log_path, mode="a"),
+        ],
     )
-    
+
     return logging.getLogger(__name__)
 
 
 def save_log(output_dir: Path, args, log_filename: str = "log.txt") -> None:
     """Save command log to file.
-    
+
     Args:
         output_dir: Output directory
         args: Parsed arguments (from argparse)
@@ -70,9 +142,9 @@ def save_log(output_dir: Path, args, log_filename: str = "log.txt") -> None:
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     log_path = output_dir / log_filename
-    with open(log_path, 'a') as f:
+    with open(log_path, "a", encoding="utf-8") as f:
         f.write(f"Command: {' '.join(sys.argv)}\n")
         f.write(f"Timestamp: {datetime.now().isoformat()}\n")
         f.write("Arguments:\n")
@@ -80,81 +152,87 @@ def save_log(output_dir: Path, args, log_filename: str = "log.txt") -> None:
             f.write(f"  {key}: {value}\n")
         f.write("\n")
 
+    _enable_output_capture(log_path)
 
-def parse_args(parser: argparse.ArgumentParser, args: Optional[list] = None) -> argparse.Namespace:
+
+def parse_args(
+    parser: argparse.ArgumentParser, args: Optional[list] = None
+) -> argparse.Namespace:
     """Parse arguments with graceful shutdown support.
-    
+
     Args:
         parser: Pre-configured ArgumentParser instance
         args: List of arguments. If None, uses sys.argv
-    
+
     Returns:
         Parsed arguments
     """
     return parser.parse_args(args)
 
 
-def validate_directory(path: Path, must_exist: bool = True, must_be_dir: bool = True) -> Path:
+def validate_directory(
+    path: Path, must_exist: bool = True, must_be_dir: bool = True
+) -> Path:
     """Validate directory path.
-    
+
     Args:
         path: Path to validate
         must_exist: Whether directory must exist
         must_be_dir: Whether path must be a directory
-    
+
     Returns:
         Validated Path object
-    
+
     Raises:
         FileNotFoundError: If directory doesn't exist and must_exist is True
         NotADirectoryError: If path is not a directory and must_be_dir is True
     """
     path = Path(path)
-    
+
     if must_exist and not path.exists():
         raise FileNotFoundError(f"Directory does not exist: {path}")
-    
+
     if must_be_dir and not path.is_dir():
         raise NotADirectoryError(f"Path is not a directory: {path}")
-    
+
     return path
 
 
 def validate_file(path: Path, must_exist: bool = True) -> Path:
     """Validate file path.
-    
+
     Args:
         path: Path to validate
         must_exist: Whether file must exist
-    
+
     Returns:
         Validated Path object
-    
+
     Raises:
         FileNotFoundError: If file doesn't exist and must_exist is True
     """
     path = Path(path)
-    
+
     if must_exist and not path.exists():
         raise FileNotFoundError(f"File does not exist: {path}")
-    
+
     if path.is_dir():
         raise IsADirectoryError(f"Path is a directory, not a file: {path}")
-    
+
     return path
 
 
 def validate_image_extensions(files: list, extensions: Optional[set] = None) -> list:
     """Filter files by valid image extensions.
-    
+
     Args:
         files: List of file paths
         extensions: Set of valid extensions. Defaults to common image formats
-    
+
     Returns:
         Filtered list of image files
     """
     if extensions is None:
-        extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
-    
+        extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+
     return [f for f in files if Path(f).suffix.lower() in extensions]

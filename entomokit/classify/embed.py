@@ -13,8 +13,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Extract embeddings, compute quality metrics, and optionally visualize with UMAP.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--images-dir", required=True)
-    p.add_argument("--out-dir", required=True)
+    p.add_argument(
+        "--images-dir",
+        required=True,
+        help="Directory containing images to embed.",
+    )
+    p.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory to write embeddings and optional visualizations.",
+    )
     p.add_argument(
         "--base-model",
         default="convnextv2_femto",
@@ -35,15 +43,59 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Generate UMAP plot (requires --label-csv).",
     )
-    p.add_argument("--umap-n-neighbors", type=int, default=15)
-    p.add_argument("--umap-min-dist", type=float, default=0.1)
-    p.add_argument("--umap-metric", default="euclidean")
-    p.add_argument("--umap-seed", type=int, default=42)
-    p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--num-workers", type=int, default=4)
-    p.add_argument("--num-threads", type=int, default=0)
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
-    p.add_argument("--metrics-sample-size", type=int, default=10000)
+    p.add_argument(
+        "--umap-n-neighbors",
+        type=int,
+        default=15,
+        help="UMAP neighbor count for manifold construction.",
+    )
+    p.add_argument(
+        "--umap-min-dist",
+        type=float,
+        default=0.1,
+        help="UMAP minimum distance between embedded points.",
+    )
+    p.add_argument(
+        "--umap-metric",
+        default="euclidean",
+        help="Distance metric used by UMAP.",
+    )
+    p.add_argument(
+        "--umap-seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible UMAP layouts.",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size used during embedding extraction.",
+    )
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader worker processes.",
+    )
+    p.add_argument(
+        "--num-threads",
+        type=int,
+        default=0,
+        help="CPU threads for PyTorch operations (0 = auto).",
+    )
+    p.add_argument(
+        "--device",
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="Compute device for embedding extraction.",
+    )
+    p.add_argument(
+        "--metrics-sample-size",
+        type=int,
+        default=10000,
+        help="Maximum sample size for embedding quality metrics.",
+    )
     p.set_defaults(func=run)
 
 

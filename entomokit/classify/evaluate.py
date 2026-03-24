@@ -13,16 +13,50 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Evaluate classification performance (AutoGluon or ONNX).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--test-csv", required=True)
-    p.add_argument("--images-dir", required=True)
+    p.add_argument(
+        "--test-csv",
+        required=True,
+        help="CSV with 'image' and 'label' columns for evaluation.",
+    )
+    p.add_argument(
+        "--images-dir",
+        required=True,
+        help="Directory containing evaluation images.",
+    )
     model_group = p.add_mutually_exclusive_group(required=True)
-    model_group.add_argument("--model-dir")
-    model_group.add_argument("--onnx-model")
-    p.add_argument("--out-dir", required=True)
-    p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--num-workers", type=int, default=4)
-    p.add_argument("--num-threads", type=int, default=0)
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    model_group.add_argument(
+        "--model-dir", help="AutoGluon predictor directory for evaluation."
+    )
+    model_group.add_argument("--onnx-model", help="ONNX model file path.")
+    p.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory to write evaluation logs and metrics.",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size for evaluation inference.",
+    )
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader worker processes.",
+    )
+    p.add_argument(
+        "--num-threads",
+        type=int,
+        default=0,
+        help="CPU threads for PyTorch/ONNX runtime (0 = auto).",
+    )
+    p.add_argument(
+        "--device",
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="Compute device for evaluation.",
+    )
     p.set_defaults(func=run)
 
 

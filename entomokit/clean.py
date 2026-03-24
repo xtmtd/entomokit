@@ -21,17 +21,46 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=512,
         help="Resize shorter edge. Use -1 to keep original.",
     )
-    p.add_argument("--out-image-format", default="jpg", choices=["jpg", "png", "tif"])
-    p.add_argument("--threads", type=int, default=12)
-    p.add_argument("--keep-exif", action="store_true")
-    p.add_argument("--dedup-mode", default="md5", choices=["none", "md5", "phash"])
-    p.add_argument("--phash-threshold", type=int, default=5)
+    p.add_argument(
+        "--out-image-format",
+        default="jpg",
+        choices=["jpg", "png", "tif"],
+        help="Output image format for cleaned files.",
+    )
+    p.add_argument(
+        "--threads",
+        type=int,
+        default=12,
+        help="Number of worker threads for image processing.",
+    )
+    p.add_argument(
+        "--keep-exif",
+        action="store_true",
+        help="Preserve EXIF metadata in output images.",
+    )
+    p.add_argument(
+        "--dedup-mode",
+        default="md5",
+        choices=["none", "md5", "phash"],
+        help="Deduplication strategy: none, exact hash (md5), or perceptual hash (phash).",
+    )
+    p.add_argument(
+        "--phash-threshold",
+        type=int,
+        default=5,
+        help="Maximum pHash distance for treating two images as duplicates.",
+    )
     p.add_argument(
         "--recursive",
         action="store_true",
         help="Recursively scan subdirectories in --input-dir.",
     )
-    p.add_argument("--verbose", "-v", action="store_true")
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose progress output.",
+    )
     p.set_defaults(func=run)
 
 

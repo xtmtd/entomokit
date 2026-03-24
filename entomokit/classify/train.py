@@ -28,15 +28,44 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default="medium",
         help="Augment preset: none/light/medium/heavy or JSON array.",
     )
-    p.add_argument("--max-epochs", type=int, default=50)
+    p.add_argument(
+        "--max-epochs",
+        type=int,
+        default=50,
+        help="Maximum number of training epochs.",
+    )
     p.add_argument(
         "--time-limit", type=float, default=1.0, help="Training time limit in hours."
     )
-    p.add_argument("--focal-loss", action="store_true")
-    p.add_argument("--focal-loss-gamma", type=float, default=1.0)
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
-    p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--num-workers", type=int, default=4)
+    p.add_argument(
+        "--focal-loss",
+        action="store_true",
+        help="Use focal loss to emphasize hard examples.",
+    )
+    p.add_argument(
+        "--focal-loss-gamma",
+        type=float,
+        default=1.0,
+        help="Gamma value for focal loss weighting.",
+    )
+    p.add_argument(
+        "--device",
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="Compute device for training.",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Mini-batch size used during training.",
+    )
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader worker processes.",
+    )
     p.add_argument(
         "--num-threads", type=int, default=0, help="CPU threads for PyTorch (0 = auto)."
     )

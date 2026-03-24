@@ -15,16 +15,33 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--label-csv", required=True, help="CSV with 'image' and 'label' columns."
     )
-    p.add_argument("--images-dir", required=True)
-    p.add_argument("--out-dir", required=True)
+    p.add_argument(
+        "--images-dir",
+        required=True,
+        help="Directory containing images referenced by --label-csv.",
+    )
+    p.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory to write CAM visualizations and artifacts.",
+    )
     model_group = p.add_mutually_exclusive_group(required=True)
     model_group.add_argument("--model-dir", help="AutoGluon predictor directory.")
     model_group.add_argument("--base-model", help="timm backbone name.")
     p.add_argument(
         "--checkpoint-path", default=None, help="Custom .pth weights for timm backbone."
     )
-    p.add_argument("--num-classes", type=int, default=None)
-    p.add_argument("--no-pretrained", action="store_true")
+    p.add_argument(
+        "--num-classes",
+        type=int,
+        default=None,
+        help="Class count for custom timm checkpoint loading.",
+    )
+    p.add_argument(
+        "--no-pretrained",
+        action="store_true",
+        help="Disable pretrained timm weights when using --base-model.",
+    )
     p.add_argument(
         "--cam-method",
         default="gradcam",
@@ -36,6 +53,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "eigencam",
             "ablationcam",
         ],
+        help="CAM algorithm used to generate saliency maps.",
     )
     p.add_argument(
         "--arch",
@@ -43,15 +61,58 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         choices=["cnn", "vit"],
         help="Force architecture type (auto-detected if not set).",
     )
-    p.add_argument("--target-layer-name", default=None)
-    p.add_argument("--image-weight", type=float, default=0.5)
-    p.add_argument("--fig-format", default="png", choices=["png", "jpg", "pdf"])
-    p.add_argument("--save-npy", action="store_true")
-    p.add_argument("--max-images", type=int, default=None)
-    p.add_argument("--cam-batch-size", type=int, default=32)
-    p.add_argument("--num-workers", type=int, default=4)
-    p.add_argument("--num-threads", type=int, default=0)
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    p.add_argument(
+        "--target-layer-name",
+        default=None,
+        help="Specific model layer for CAM (auto-selected when omitted).",
+    )
+    p.add_argument(
+        "--image-weight",
+        type=float,
+        default=0.5,
+        help="Blend weight of original image in CAM overlay (0-1).",
+    )
+    p.add_argument(
+        "--fig-format",
+        default="png",
+        choices=["png", "jpg", "pdf"],
+        help="Output format for CAM figures.",
+    )
+    p.add_argument(
+        "--save-npy",
+        action="store_true",
+        help="Save raw CAM heatmaps as NumPy arrays.",
+    )
+    p.add_argument(
+        "--max-images",
+        type=int,
+        default=None,
+        help="Maximum number of images to process (None = all).",
+    )
+    p.add_argument(
+        "--cam-batch-size",
+        type=int,
+        default=32,
+        help="Batch size for CAM inference.",
+    )
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader worker processes.",
+    )
+    p.add_argument(
+        "--num-threads",
+        type=int,
+        default=0,
+        help="CPU threads for PyTorch operations (0 = auto).",
+    )
+    p.add_argument(
+        "--device",
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="Compute device for CAM generation.",
+    )
     p.set_defaults(func=run)
 
 

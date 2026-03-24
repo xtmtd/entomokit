@@ -18,11 +18,36 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         help="Input CSV with 'image' and 'label' columns.",
     )
-    p.add_argument("--mode", choices=["ratio", "count"], default="ratio")
-    p.add_argument("--unknown-test-classes-ratio", type=float, default=0.0)
-    p.add_argument("--known-test-classes-ratio", type=float, default=0.1)
-    p.add_argument("--unknown-test-classes-count", type=int, default=0)
-    p.add_argument("--known-test-classes-count", type=int, default=0)
+    p.add_argument(
+        "--mode",
+        choices=["ratio", "count"],
+        default="ratio",
+        help="Split strategy: use class ratios or explicit class counts.",
+    )
+    p.add_argument(
+        "--unknown-test-classes-ratio",
+        type=float,
+        default=0.0,
+        help="Fraction of classes reserved for unknown-class test split (ratio mode).",
+    )
+    p.add_argument(
+        "--known-test-classes-ratio",
+        type=float,
+        default=0.1,
+        help="Fraction of known classes moved to test split (ratio mode).",
+    )
+    p.add_argument(
+        "--unknown-test-classes-count",
+        type=int,
+        default=0,
+        help="Number of classes reserved for unknown-class test split (count mode).",
+    )
+    p.add_argument(
+        "--known-test-classes-count",
+        type=int,
+        default=0,
+        help="Number of known classes moved to test split (count mode).",
+    )
     p.add_argument(
         "--val-ratio",
         type=float,
@@ -35,10 +60,29 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=0,
         help="Val split count (from train). 0 = no val split.",
     )
-    p.add_argument("--min-count-per-class", type=int, default=0)
-    p.add_argument("--max-count-per-class", type=int, default=None)
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--out-dir", default="datasets")
+    p.add_argument(
+        "--min-count-per-class",
+        type=int,
+        default=0,
+        help="Drop classes with fewer than this number of images.",
+    )
+    p.add_argument(
+        "--max-count-per-class",
+        type=int,
+        default=None,
+        help="Cap images per class before splitting (None = no cap).",
+    )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible splits.",
+    )
+    p.add_argument(
+        "--out-dir",
+        default="datasets",
+        help="Directory to write split CSV files and optional copied images.",
+    )
     p.add_argument(
         "--images-dir",
         default=None,
@@ -49,7 +93,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Copy images into out_dir/images/{split}/ subdirectories.",
     )
-    p.add_argument("--verbose", "-v", action="store_true")
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose output during splitting.",
+    )
     p.set_defaults(func=run)
 
 

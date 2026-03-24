@@ -19,11 +19,35 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     model_group = p.add_mutually_exclusive_group(required=True)
     model_group.add_argument("--model-dir", help="AutoGluon predictor directory.")
     model_group.add_argument("--onnx-model", help="ONNX model file path.")
-    p.add_argument("--out-dir", required=True)
-    p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--num-workers", type=int, default=4)
-    p.add_argument("--num-threads", type=int, default=0)
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    p.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory to write prediction outputs.",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size for model inference.",
+    )
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader worker processes.",
+    )
+    p.add_argument(
+        "--num-threads",
+        type=int,
+        default=0,
+        help="CPU threads for PyTorch/ONNX runtime (0 = auto).",
+    )
+    p.add_argument(
+        "--device",
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="Compute device for inference.",
+    )
     p.set_defaults(func=run)
 
 

@@ -246,7 +246,7 @@ out_dir/
 
 自定义方式：传入 JSON 数组字符串，如 `'["random_resize_crop","color_jitter"]'`
 
-传入无效预设名称或非法 JSON 时，立即报错退出（不静默回退到 `medium`）。
+传入无效预设名称或非法 JSON 时，立即报错退出（不静默回退到 `medium`）。JSON 数组中包含未知 transform 名称时，同样在解析阶段报错退出，提示可用名称列表。
 
 **输出结构**：
 ```
@@ -310,7 +310,6 @@ out_dir/
 | `--out-dir` | str | 必填 | 输出目录 |
 | `--base-model` | str | `convnextv2_femto` | timm backbone（无 `--model-dir`/`--onnx-model` 时使用） |
 | `--model-dir` | str | 可选 | AutoGluon predictor，使用 fine-tuned backbone 提取 |
-| `--onnx-model` | str | 可选 | ONNX 模型，提取中间层嵌入 |
 | `--label-csv` | str | 可选 | CSV(image,label)，提供后计算有监督指标 + UMAP 着色 |
 | `--visualize` | flag | False | 生成 UMAP 可视化图；若未提供 `--label-csv` 则报错退出 |
 | `--umap-n-neighbors` | int | 15 | UMAP n_neighbors |

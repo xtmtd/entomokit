@@ -749,20 +749,17 @@ class SynthesisProcessor:
             target_mask = target_rgba[:, :, 3]
             bbox = mask_to_bbox(target_mask)
             polygon = mask_to_polygon(target_mask)
-            mask_area = int(np.sum(target_mask > 0))
             area = float(bbox[2] * bbox[3])
         elif result.shape[2] == 4:
             # Fallback: use result alpha channel
             result_mask = result[:, :, 3]
             bbox = mask_to_bbox(result_mask)
             polygon = mask_to_polygon(result_mask)
-            mask_area = int(np.sum(result_mask > 0))
             area = float(bbox[2] * bbox[3])
         else:
             # Fallback: use full image if no alpha channel
             bbox = [0, 0, result.shape[1], result.shape[0]]
             polygon = []
-            mask_area = 0
             area = float(result.shape[1] * result.shape[0])
 
         # Apply position offset to bbox and polygon
@@ -797,7 +794,6 @@ class SynthesisProcessor:
             bbox=[int(x) for x in adjusted_bbox],
             segmentation=adjusted_polygon,
             area=area,
-            mask_area=mask_area,
             scale_ratio=scale_ratio,
             rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
         )
@@ -831,20 +827,17 @@ class SynthesisProcessor:
             target_mask = target_rgba[:, :, 3]
             bbox = mask_to_bbox(target_mask)
             polygon = mask_to_polygon(target_mask)
-            mask_area = int(np.sum(target_mask > 0))
             area = float(bbox[2] * bbox[3])
         elif result.shape[2] == 4:
             # Fallback: use result alpha channel
             result_mask = result[:, :, 3]
             bbox = mask_to_bbox(result_mask)
             polygon = mask_to_polygon(result_mask)
-            mask_area = int(np.sum(result_mask > 0))
             area = float(bbox[2] * bbox[3])
         else:
             # Fallback: use full image if no alpha channel
             bbox = [0, 0, result.shape[1], result.shape[0]]
             polygon = []
-            mask_area = 0
             area = float(result.shape[1] * result.shape[0])
 
         # Apply position offset to bbox and polygon
@@ -875,7 +868,6 @@ class SynthesisProcessor:
             bbox=[int(x) for x in adjusted_bbox],
             segmentation=adjusted_polygon,
             area=area,
-            mask_area=mask_area,
             scale_ratio=scale_ratio,
             rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
         )
@@ -918,20 +910,17 @@ class SynthesisProcessor:
             target_mask = target_rgba[:, :, 3]
             bbox = mask_to_bbox(target_mask)
             polygon = mask_to_polygon(target_mask)
-            mask_area = int(np.sum(target_mask > 0))
             area = float(bbox[2] * bbox[3])
         elif result.shape[2] == 4:
             # Fallback: use result alpha channel
             result_mask = result[:, :, 3]
             bbox = mask_to_bbox(result_mask)
             polygon = mask_to_polygon(result_mask)
-            mask_area = int(np.sum(result_mask > 0))
             area = float(bbox[2] * bbox[3])
         else:
             # Fallback: use full image if no alpha channel
             bbox = [0, 0, result.shape[1], result.shape[0]]
             polygon = []
-            mask_area = 0
             area = float(result.shape[1] * result.shape[0])
 
         # Apply position offset to bbox and polygon
@@ -962,7 +951,6 @@ class SynthesisProcessor:
             bbox=[int(x) for x in adjusted_bbox],
             segmentation=adjusted_polygon,
             area=area,
-            mask_area=mask_area,
             scale_ratio=scale_ratio,
             rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
         )
@@ -978,6 +966,10 @@ class SynthesisProcessor:
 
         with open(labels_path, "w") as f:
             f.write(yolo_content)
+
+        yaml_dir = output_dir if output_dir else Path(self.output_subdir).parent
+        yaml_path = yaml_dir / "data.yaml"
+        yaml_path.write_text('train: images\nnc: 1\nnames: ["insect"]\n')
 
     def _get_annotation_output_dir(self, output_dir: Path) -> Path:
         """Get annotation output directory based on format (detcli-aligned paths)."""

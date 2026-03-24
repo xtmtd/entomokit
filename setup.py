@@ -1,12 +1,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="insect-synthesizer",
-    version="0.1.0",
-    description="A Python tool for segmenting insects using multiple methods (SAM3, Otsu, GrabCut) and synthesizing images",
-    author="Your Name",
-    author_email="your.email@example.com",
-    url="https://github.com/yourusername/insect-synthesizer",
+    name="entomokit",
+    version="0.1.1",
+    description="A Python toolkit for building insect image datasets with segmentation, frame extraction, cleaning, dataset splitting, and image synthesis capabilities",
+    author="Feng ZHANG",
+    author_email="fzhang@njau.edu.cn",
+    url="https://github.com/yourusername/entomokit",
     packages=find_packages(),
     install_requires=[
         "numpy>=1.24.0",
@@ -18,6 +18,7 @@ setup(
             "torch>=2.0.0,<2.4.0",
             "torchvision>=0.15.0,<0.19.0",
             "opencv-python>=4.8.0",
+            "scikit-image>=0.21.0",
         ],
         "cleaning": [
             "imagehash",
@@ -32,14 +33,19 @@ setup(
             "pytest>=7.4.0",
             "pytest-cov>=4.1.0",
         ],
+        "classify": [
+            "autogluon.multimodal",
+            "timm>=0.9.0",
+            "umap-learn",
+            "pytorch-grad-cam",
+            "onnxruntime",
+            "scikit-learn",
+        ],
     },
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
-            "insect-segment=scripts.segment:main",
-            "insect-clean=scripts.clean_figs:main",
-            "insect-extract=scripts.extract_frames:main",
-            "insect-split=scripts.split_dataset:main",
+            "entomokit=entomokit.main:main",
         ],
     },
     classifiers=[

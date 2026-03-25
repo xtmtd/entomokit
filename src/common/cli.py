@@ -4,6 +4,7 @@ import argparse
 import atexit
 import logging
 import os
+import re
 import signal
 import sys
 from datetime import datetime
@@ -16,6 +17,7 @@ _capture_file_handle = None
 _capture_stdout = None
 _capture_stderr = None
 _capture_log_path: Optional[Path] = None
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 class _TeeStream:
@@ -26,7 +28,9 @@ class _TeeStream:
     def write(self, text: str) -> int:
         written = self._stream.write(text)
         if text and "\r" not in text:
-            self._log_file.write(text)
+            clean = _ANSI_CSI_RE.sub("", text)
+            if clean:
+                self._log_file.write(clean)
             self._log_file.flush()
         return written
 

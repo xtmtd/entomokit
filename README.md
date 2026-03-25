@@ -324,7 +324,20 @@ entomokit classify train \
     --base-model convnextv2_femto \
     --augment medium \
     --max-epochs 50 \
+    --learning-rate 3e-4 \
     --device auto
+```
+
+继续训练示例（将 epoch 上限从 50 提高到 100）：
+
+```bash
+entomokit classify train \
+    --train-csv data/train.csv \
+    --images-dir data/images/ \
+    --out-dir runs/exp1/ \
+    --base-model convnextv2_femto \
+    --max-epochs 100 \
+    --resume
 ```
 
 | Parameter | Description | Default |
@@ -333,9 +346,15 @@ entomokit classify train \
 | `--images-dir` | Training images directory | Required |
 | `--out-dir` | Output directory | Required |
 | `--base-model` | timm backbone name | `convnextv2_femto` |
-| `--augment` | `none/light/medium/heavy` or JSON array | `medium` |
+| `--augment` | `none/light/medium/heavy` 预设，或 JSON 数组（如 `"[\"random_resize_crop\",\"color_jitter\"]"`） | `medium` |
 | `--max-epochs` | Max training epochs | 50 |
 | `--time-limit` | Time limit in hours | 1.0 |
+| `--resume` | 从已有模型目录的最近 checkpoint 继续训练 | No |
+| `--learning-rate` | AutoGluon `optim.lr` | `1e-4` |
+| `--weight-decay` | AutoGluon `optim.weight_decay` | `1e-3` |
+| `--warmup-steps` | AutoGluon `optim.warmup_steps` | `0.1` |
+| `--patience` | AutoGluon `optim.patience` | `10` |
+| `--top-k` | AutoGluon `optim.top_k`（checkpoint averaging） | `3` |
 | `--focal-loss` | Enable focal loss | No |
 | `--device` | `auto/cpu/cuda/mps` | `auto` |
 | `--batch-size` | Batch size | 32 |

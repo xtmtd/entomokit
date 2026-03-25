@@ -403,7 +403,7 @@ entomokit classify evaluate \
     --out-dir runs/eval/
 ```
 
-Metrics saved to `logs/evaluations.txt`: accuracy, precision/recall (macro+micro), F1, MCC, ROC-AUC.
+Metrics saved to `evaluations.csv` in `--out-dir` (columns: `metric`, `value`). Common metrics include accuracy, balanced accuracy, precision/recall/F1 (macro+micro+weighted), MCC, quadratic kappa, ROC-AUC (OVO/OVR).
 
 #### `classify embed`
 

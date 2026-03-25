@@ -561,3 +561,136 @@ pytest tests/test_classify_predict_cli.py tests/test_main_cli.py tests/test_cli_
 ```
 
 Result: 10 passed.
+
+---
+
+## Additional Changes (2026-03-25) — `classify evaluate` Metrics Expansion + CSV Output
+
+### Summary
+
+Improved `entomokit classify evaluate` for better metric coverage and easier downstream parsing.
+
+### Changes to `src/classification/evaluator.py`
+
+- Added reusable `compute_classification_metrics()` helper.
+- Expanded common classification metrics to include:
+  - `balanced_accuracy`
+  - `precision_weighted`, `recall_weighted`, `f1_weighted`
+  - `quadratic_kappa`
+  - `roc_auc_ovr` (in addition to `roc_auc_ovo`)
+- Unified AutoGluon and ONNX evaluation paths to use the same metric computation.
+- Added safe ROC-AUC handling for binary/multiclass and fallback to `NaN` when unavailable.
+
+### Changes to `entomokit/classify/evaluate.py`
+
+- `evaluations.txt` is no longer written under `logs/`.
+- Metrics are now saved directly in `--out-dir` as `evaluations.csv`.
+- CSV format is two columns: `metric,value`.
+
+### Tests
+
+- Added `tests/test_classify_evaluate_cli.py`:
+  - verifies common metric keys are produced
+  - verifies `classify evaluate` writes `evaluations.csv` under output root (not `logs/evaluations.txt`)
+
+### Verification
+
+Executed:
+
+```bash
+pytest tests/test_classify_evaluate_cli.py tests/test_classify_predict_cli.py tests/test_main_cli.py tests/test_cli_help_texts.py
+```
+
+Result: 12 passed.
+
+---
+
+## Additional Changes (2026-03-25) — Apple Silicon Training Stability + Output Directory Cleanup
+
+### Summary
+
+Fixed multiple issues with `entomokit classify train` to work correctly on Apple Silicon (MPS) machines, improved usability with tunable training parameters, and unified output directory naming conventions.
+
+### Changes to `src/classification/trainer.py`
+
+**NVML stub for non-NVIDIA machines:**
+- Auto-installs a no-op `nvidia_smi` stub module on Apple Silicon / CPU machines
+- Prevents `NVMLError_LibraryNotFound` from AutoGluon's internal GPU detection
+
+**Fixed AutoGluon API change:**
+- `MultiModalPredictor.fit()` no longer accepts `max_epochs` as keyword argument
+- Changed to use `hyperparameters={"optim.max_epochs": N}` format
+
+**Auto problem type detection:**
+- Automatically infers `problem_type` from label count
+- 2 classes → `"binary"`, ≥3 classes → `"multiclass"`
+
+**Focal loss fix:**
+- Removed `focal_loss.alpha = -1` setting (caused `RuntimeError` with binary classification)
+- Let AutoGluon handle focal loss alpha internally
+
+**CUDA AMP warning suppression:**
+- Sets `env.precision=32` for non-CUDA devices
+- Suppresses spurious `User provided device_type of 'cuda'` warnings on MPS/CPU
+
+**New training parameters:**
+- `--learning-rate` (default: `1e-4`)
+- `--weight-decay` (default: `1e-3`)
+- `--warmup-steps` (default: `0.1`)
+- `--patience` (default: `10`)
+- `--top-k` (default: `3`)
+
+**Resume training:**
+- Added `--resume` flag to continue training from existing model directory checkpoint
+
+### Changes to `entomokit/classify/train.py`
+
+**Documentation improvements:**
+- Expanded `--augment` help text with preset details and JSON array examples
+- All new parameters documented with AutoGluon defaults
+
+**Warning filters:**
+- Added warning filter for `torch.cuda.amp` warnings on non-CUDA devices
+
+### Changes to `src/common/cli.py`
+
+**ANSI cleanup in logs:**
+- `_TeeStream.write()` now strips ANSI CSI sequences (cursor movement, colors)
+- Prevents `\x1b[A` artifacts in log files from progress bars
+
+### Changes to `src/common/annotation_writer.py`
+
+**COCO output simplification:**
+- Removed `images_directory_path` parameter from `dataset.as_coco()` call
+- COCO mode no longer copies source images into output directory
+
+**YOLO data.yaml enhancement:**
+- Added `train: images` line to `data.yaml` for YOLO format
+
+### Changes to `src/segmentation/processor.py`
+
+**Output directory rename:**
+- Changed output directory from `cleaned_images/` to `images/`
+- Aligns with detcli convention
+
+### Deleted files
+
+- `README.cn.md` — removed Chinese documentation (consolidate to English only)
+
+### New test file
+
+- `tests/test_classify_trainer.py` — 8 tests covering:
+  - `max_epochs` hyperparameter format
+  - Binary vs multiclass problem type detection
+  - Resume training functionality
+  - NVML stub installation
+  - CUDA warning filtering
+
+### Updated test files
+
+- `tests/test_annotation_writer.py` — added COCO no-copy test, YOLO `train: images` test
+- `tests/test_segmentation.py` — updated assertions for `images/` directory name, code formatting
+
+### Test Results
+
+All tests pass after changes.

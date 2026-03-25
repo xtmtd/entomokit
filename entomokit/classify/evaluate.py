@@ -61,14 +61,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
-    from pathlib import Path
+    import pandas as pd
     from src.classification.utils import select_device, ag_device_map
     from src.common.cli import save_log
 
     out_dir = Path(args.out_dir)
-    logs_dir = out_dir / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    save_log(logs_dir, args)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    save_log(out_dir, args)
 
     device = select_device(args.device)
 
@@ -95,10 +94,12 @@ def run(args: argparse.Namespace) -> None:
             num_threads=args.num_threads,
         )
 
-    eval_txt = logs_dir / "evaluations.txt"
-    lines = [f"{k}: {v:.6f}" for k, v in metrics.items()]
-    eval_txt.write_text("\n".join(lines) + "\n")
+    eval_csv = out_dir / "evaluations.csv"
+    metrics_df = pd.DataFrame(
+        [{"metric": metric_name, "value": metric_value} for metric_name, metric_value in metrics.items()]
+    )
+    metrics_df.to_csv(eval_csv, index=False)
 
-    for line in lines:
-        print(line)
-    print(f"\nResults saved to: {eval_txt}")
+    for metric_name, metric_value in metrics.items():
+        print(f"{metric_name}: {metric_value:.6f}")
+    print(f"\nResults saved to: {eval_csv}")

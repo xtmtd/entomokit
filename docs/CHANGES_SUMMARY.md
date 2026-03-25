@@ -878,6 +878,39 @@ entomokit classify cam --images-dir data/Epidorcus/images/ --out-dir out/cam --m
 
 ---
 
+## Additional Changes (2026-03-25) — Remove Legacy Folders + Bump Version to 0.1.3
+
+### Summary
+
+Cleaned up obsolete migration artifacts by removing legacy implementation folders and updated package version directly from `0.1.1` to `0.1.3`.
+
+### Removed
+
+- `scripts/` (legacy standalone CLI scripts no longer used)
+- `add_functions/` (historical classification/GradCAM source scripts already integrated into `src/classification/` and `entomokit/classify/`)
+
+### Versioning
+
+- Updated `setup.py` package version:
+  - `0.1.1` → `0.1.3`
+- Skipped `0.1.2` per release sequencing decision.
+
+### Tests
+
+- Added `tests/test_package_version.py` to assert published setup version is `0.1.3`.
+- Removed obsolete `tests/test_segment_cli.py` (it depended on deleted legacy `scripts/segment.py` entrypoint).
+
+### Verification
+
+Executed and passed:
+
+```bash
+pytest -q tests/test_package_version.py
+pytest -q tests/test_main_cli.py tests/test_cli_help_texts.py
+```
+
+---
+
 ## Additional Changes (2026-03-25) — CLI Help UI Refresh (Examples + Boxed Sections)
 
 ### Summary

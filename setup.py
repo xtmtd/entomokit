@@ -5,8 +5,8 @@ setup(
     version="0.1.3",
     description="A Python toolkit for building insect image datasets with segmentation, frame extraction, cleaning, dataset splitting, and image synthesis capabilities",
     author="Feng ZHANG",
-    author_email="fzhang@njau.edu.cn",
-    url="https://github.com/yourusername/entomokit",
+    author_email="xtmtd.zf@gmail.com",
+    url="https://github.com/xtmtd/entomokit",
     packages=find_packages(),
     install_requires=[
         "numpy>=1.24.0",

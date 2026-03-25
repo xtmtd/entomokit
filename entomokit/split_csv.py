@@ -146,7 +146,7 @@ def run(args: argparse.Namespace) -> None:
         unknown_test_ratio=args.unknown_test_classes_ratio,
         known_test_ratio=args.known_test_classes_ratio,
         unknown_test_count=args.unknown_test_classes_count,
-        known_test_count=args.unknown_test_classes_count,
+        known_test_count=args.known_test_classes_count,
         min_count_per_class=args.min_count_per_class,
         max_count_per_class=args.max_count_per_class,
         val_ratio=args.val_ratio,

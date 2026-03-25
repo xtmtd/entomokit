@@ -204,7 +204,8 @@ class SegmentationProcessor:
                 cv2.drawContours(single_mask, [contour], -1, 1, -1)
                 masks.append(single_mask.astype(bool))
             return masks
-        except Exception:
+        except cv2.error:
+            logger.exception("GrabCut segmentation failed")
             return []
 
     def process_image(
@@ -654,6 +655,7 @@ class SegmentationProcessor:
             else:
                 repaired = base_repaired
         except Exception:
+            logger.exception("SAM3-fill enhancement failed; falling back to OpenCV inpaint")
             # Fallback to OpenCV repair if SAM3 fails
             repaired = base_repaired
 

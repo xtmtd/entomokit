@@ -541,8 +541,8 @@ class SynthesisProcessor:
                 y,
                 final_target_for_check,
             )
-        except Exception as e:
-            logger.error(f"Synthesis failed: {e}")
+        except Exception:
+            logger.exception("Synthesis failed")
             return (
                 None,
                 None,

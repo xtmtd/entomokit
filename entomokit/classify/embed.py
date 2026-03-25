@@ -114,7 +114,6 @@ def run(args: argparse.Namespace) -> None:
 
     import numpy as np
     import pandas as pd
-    from pathlib import Path
     from src.classification.utils import select_device, set_num_threads, load_image_csv
     from src.common.cli import save_log
 

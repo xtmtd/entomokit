@@ -9,7 +9,7 @@ import signal
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 
 _shutdown_requested = False
@@ -103,7 +103,7 @@ def setup_shutdown_handler():
     signal.signal(signal.SIGINT, signal_handler)
 
 
-def get_shutdown_flag() -> callable:
+def get_shutdown_flag() -> Callable[[], bool]:
     """Return a callable that returns True when shutdown is requested."""
     return lambda: _shutdown_requested
 
@@ -177,53 +177,17 @@ def parse_args(
 def validate_directory(
     path: Path, must_exist: bool = True, must_be_dir: bool = True
 ) -> Path:
-    """Validate directory path.
+    """Validate directory path."""
+    from src.common.validators import validate_directory as _validate_directory
 
-    Args:
-        path: Path to validate
-        must_exist: Whether directory must exist
-        must_be_dir: Whether path must be a directory
-
-    Returns:
-        Validated Path object
-
-    Raises:
-        FileNotFoundError: If directory doesn't exist and must_exist is True
-        NotADirectoryError: If path is not a directory and must_be_dir is True
-    """
-    path = Path(path)
-
-    if must_exist and not path.exists():
-        raise FileNotFoundError(f"Directory does not exist: {path}")
-
-    if must_be_dir and not path.is_dir():
-        raise NotADirectoryError(f"Path is not a directory: {path}")
-
-    return path
+    return _validate_directory(path, must_exist=must_exist, must_be_dir=must_be_dir)
 
 
 def validate_file(path: Path, must_exist: bool = True) -> Path:
-    """Validate file path.
+    """Validate file path."""
+    from src.common.validators import validate_file as _validate_file
 
-    Args:
-        path: Path to validate
-        must_exist: Whether file must exist
-
-    Returns:
-        Validated Path object
-
-    Raises:
-        FileNotFoundError: If file doesn't exist and must_exist is True
-    """
-    path = Path(path)
-
-    if must_exist and not path.exists():
-        raise FileNotFoundError(f"File does not exist: {path}")
-
-    if path.is_dir():
-        raise IsADirectoryError(f"Path is a directory, not a file: {path}")
-
-    return path
+    return _validate_file(path, must_exist=must_exist)
 
 
 def validate_image_extensions(files: list, extensions: Optional[set] = None) -> list:

@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "segment",
         help="Segment insects from images using SAM3, Otsu, or GrabCut.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Segment insects from images using SAM3, Otsu, or GrabCut.",
+            [
+                "entomokit segment --input-dir ./images --out-dir ./segmented",
+                "entomokit segment --input-dir ./images --out-dir ./segmented --segmentation-method sam3 --sam3-checkpoint ./sam3.pt",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     # --- I/O ---
     p.add_argument("--input-dir", "-i", required=True, help="Input images directory.")
     p.add_argument("--out-dir", "-o", required=True, help="Output directory.")

@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "split-csv",
         help="Split a CSV dataset (image, label) into train/val/test splits.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Split a CSV dataset (image, label) into train/val/test splits.",
+            [
+                "entomokit split-csv --raw-image-csv data.csv --out-dir ./datasets",
+                "entomokit split-csv --raw-image-csv data.csv --mode ratio --known-test-classes-ratio 0.1 --out-dir ./datasets",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument(
         "--raw-image-csv",
         required=True,

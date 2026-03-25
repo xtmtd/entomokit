@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "embed",
         help="Extract embeddings, compute quality metrics, and optionally visualize with UMAP.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Extract embeddings, compute quality metrics, and optionally visualize with UMAP.",
+            [
+                "entomokit classify embed --images-dir ./images --out-dir ./embed",
+                "entomokit classify embed --images-dir ./images --label-csv labels.csv --visualize --out-dir ./embed",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument(
         "--images-dir",
         required=True,

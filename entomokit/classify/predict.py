@@ -6,6 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 
@@ -20,8 +22,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "predict",
         help="Run classification inference (AutoGluon or ONNX).",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Run classification inference (AutoGluon or ONNX).",
+            [
+                "entomokit classify predict --images-dir ./images --model-dir ./model --out-dir ./pred",
+                "entomokit classify predict --input-csv data.csv --images-dir ./images --onnx-model model.onnx --out-dir ./pred",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument("--input-csv", help="CSV with 'image' column.")
     p.add_argument("--images-dir", help="Directory to scan for images.")
     model_group = p.add_mutually_exclusive_group(required=True)

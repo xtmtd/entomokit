@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "synthesize",
         help="Composite target objects onto background images.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Composite target objects onto background images.",
+            [
+                "entomokit synthesize --target-dir ./targets --background-dir ./bg --out-dir ./syn",
+                "entomokit synthesize --target-dir ./targets --background-dir ./bg --out-dir ./syn --num-syntheses 20",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     # --- I/O ---
     p.add_argument(
         "--target-dir",

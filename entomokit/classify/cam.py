@@ -5,13 +5,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "cam",
         help="Generate GradCAM heatmaps (PyTorch models only, not ONNX).",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Generate GradCAM heatmaps (PyTorch models only, not ONNX).",
+            [
+                "entomokit classify cam --images-dir ./images --model-dir ./model --out-dir ./cam",
+                "entomokit classify cam --images-dir ./images --base-model convnextv2_femto --out-dir ./cam --cam-method gradcampp",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument(
         "--label-csv",
         default=None,

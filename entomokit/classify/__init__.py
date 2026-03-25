@@ -4,13 +4,28 @@ from __future__ import annotations
 
 import argparse
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "classify",
         help="Image classification commands (AutoGluon).",
+        description=with_examples(
+            "Image classification commands (AutoGluon).",
+            [
+                "entomokit classify train --train-csv train.csv --images-dir ./images --out-dir ./model",
+                "entomokit classify predict --images-dir ./images --model-dir ./model --out-dir ./pred",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
-    sub = p.add_subparsers(dest="subcommand", metavar="<subcommand>")
+    style_parser(p)
+    sub = p.add_subparsers(
+        dest="subcommand",
+        metavar="<subcommand>",
+        title="[ Commands ]",
+    )
     sub.required = True
 
     from entomokit.classify import train, predict, evaluate, embed, cam, export_onnx

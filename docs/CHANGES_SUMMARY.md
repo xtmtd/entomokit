@@ -875,3 +875,68 @@ pytest tests/test_classification_cam.py tests/test_classify_embed_cli.py
 pytest tests/test_cli_help_texts.py tests/test_main_cli.py
 entomokit classify cam --images-dir data/Epidorcus/images/ --out-dir out/cam --model-dir out/train/AutogluonModels/convnextv2_femto/ --num-classes 2 --cam-method scorecam --dump-model-structure --max-images 1
 ```
+
+---
+
+## Additional Changes (2026-03-25) — CLI Help UI Refresh (Examples + Boxed Sections)
+
+### Summary
+
+Refined CLI help presentation to better match the `detection` tool style by adding quick command examples near the top and boxed section titles for readability.
+
+### New file
+
+- `entomokit/help_style.py`
+  - Added shared helpers for consistent help rendering:
+    - `RichHelpFormatter` (defaults + raw text newlines)
+    - `with_examples()` (injects `Quick examples` blocks)
+    - `style_parser()` (sets `[ Options ]` / `[ Commands ]` headings)
+
+### Changes to top-level CLI
+
+- `entomokit/main.py`
+  - Added top-level `Quick examples` section.
+  - Updated parser styling to use boxed section titles.
+
+### Changes to command help pages
+
+Applied the same help style to command groups and subcommands:
+
+- Base commands:
+  - `entomokit/segment.py`
+  - `entomokit/extract_frames.py`
+  - `entomokit/clean.py`
+  - `entomokit/split_csv.py`
+  - `entomokit/synthesize.py`
+- Classification group and subcommands:
+  - `entomokit/classify/__init__.py`
+  - `entomokit/classify/train.py`
+  - `entomokit/classify/predict.py`
+  - `entomokit/classify/evaluate.py`
+  - `entomokit/classify/embed.py`
+  - `entomokit/classify/cam.py`
+  - `entomokit/classify/export_onnx.py`
+
+### Tests
+
+- `tests/test_main_cli.py`
+  - Added assertions for:
+    - top-level quick examples and boxed sections
+    - `segment --help` quick examples and boxed options
+    - `classify --help` quick examples and boxed commands/options
+    - `classify train --help` quick examples and boxed options
+
+### Verification
+
+Executed and passed:
+
+```bash
+pytest -q tests/test_main_cli.py
+pytest -q tests/test_cli_help_texts.py
+pytest -q tests/test_classify_predict_cli.py tests/test_classify_trainer.py
+pytest -q tests/test_classify_embed_cli.py tests/test_classify_evaluate_cli.py tests/test_classify_export_onnx_cli.py tests/test_classification_cam.py
+python -m entomokit.main --help
+python -m entomokit.main segment --help
+python -m entomokit.main classify --help
+python -m entomokit.main classify train --help
+```

@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def _ensure_project_root_on_path() -> None:
     """Ensure local project root is importable before similarly named packages."""
@@ -83,16 +85,30 @@ def _install_completion() -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    description = with_examples(
+        "A toolkit for building insect image datasets.",
+        [
+            "entomokit segment --input-dir ./images --out-dir ./out",
+            "entomokit extract-frames --input-dir ./video.mp4 --out-dir ./frames",
+            "entomokit classify train --train-csv train.csv --images-dir ./images --out-dir ./model",
+        ],
+    )
     parser = argparse.ArgumentParser(
         prog="entomokit",
-        description="A toolkit for building insect image datasets.",
+        description=description,
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(parser)
     parser.add_argument(
         "--install-completion",
         action="store_true",
         help="Install shell completion for entomokit.",
     )
-    subparsers = parser.add_subparsers(dest="command", metavar="<command>")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        metavar="<command>",
+        title="[ Commands ]",
+    )
 
     subparsers.required = False
     # Lazy imports keep startup fast and avoid heavy optional deps at import time

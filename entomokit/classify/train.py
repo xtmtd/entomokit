@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "train",
         help="Train an AutoGluon image classifier.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Train an AutoGluon image classifier.",
+            [
+                "entomokit classify train --train-csv train.csv --images-dir ./images --out-dir ./model",
+                "entomokit classify train --train-csv train.csv --images-dir ./images --out-dir ./model --base-model convnextv2_femto --max-epochs 30",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument(
         "--train-csv", required=True, help="CSV with 'image' and 'label' columns."
     )

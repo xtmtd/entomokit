@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "extract-frames",
         help="Extract frames from video files.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Extract frames from video files.",
+            [
+                "entomokit extract-frames --input-dir ./video.mp4 --out-dir ./frames",
+                "entomokit extract-frames --input-dir ./videos --out-dir ./frames --interval 500",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument(
         "--input-dir",
         "-i",

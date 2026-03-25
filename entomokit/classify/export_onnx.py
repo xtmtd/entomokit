@@ -5,13 +5,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "export-onnx",
         help="Export an AutoGluon predictor to ONNX format.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Export an AutoGluon predictor to ONNX format.",
+            [
+                "entomokit classify export-onnx --model-dir ./model --out-dir ./onnx",
+                "entomokit classify export-onnx --model-dir ./model --out-dir ./onnx --opset 17",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument("--model-dir", required=True, help="AutoGluon predictor directory.")
     p.add_argument("--out-dir", required=True, help="Output directory for model.onnx.")
     p.add_argument("--opset", type=int, default=17, help="ONNX opset version.")

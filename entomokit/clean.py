@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "clean",
         help="Clean and deduplicate images.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Clean and deduplicate images.",
+            [
+                "entomokit clean --input-dir ./raw --out-dir ./cleaned",
+                "entomokit clean --input-dir ./raw --out-dir ./cleaned --dedup-mode phash --phash-threshold 5",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument("--input-dir", required=True, help="Input images directory.")
     p.add_argument("--out-dir", required=True, help="Output directory.")
     p.add_argument(

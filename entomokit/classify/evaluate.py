@@ -6,13 +6,23 @@ import argparse
 import sys
 from pathlib import Path
 
+from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "evaluate",
         help="Evaluate classification performance (AutoGluon or ONNX).",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=with_examples(
+            "Evaluate classification performance (AutoGluon or ONNX).",
+            [
+                "entomokit classify evaluate --test-csv test.csv --images-dir ./images --model-dir ./model --out-dir ./eval",
+                "entomokit classify evaluate --test-csv test.csv --images-dir ./images --onnx-model model.onnx --out-dir ./eval",
+            ],
+        ),
+        formatter_class=RichHelpFormatter,
     )
+    style_parser(p)
     p.add_argument(
         "--test-csv",
         required=True,
@@ -99,7 +109,10 @@ def run(args: argparse.Namespace) -> None:
 
     eval_csv = out_dir / "evaluations.csv"
     metrics_df = pd.DataFrame(
-        [{"metric": metric_name, "value": metric_value} for metric_name, metric_value in metrics.items()]
+        [
+            {"metric": metric_name, "value": metric_value}
+            for metric_name, metric_value in metrics.items()
+        ]
     )
     metrics_df.to_csv(eval_csv, index=False)
 

@@ -52,7 +52,45 @@ entomokit <command> [options]
 
 ## Installation
 
+Recommended: use an isolated Python environment to avoid dependency conflicts with your system/site-packages.
+
+### Deployment Mode A (Recommended): Isolated Environment
+
+Choose one of the following:
+
+**Option 1: conda**
+
+```bash
+conda create -n entomokit python=3.11 -y
+conda activate entomokit
+pip install -e .
+```
+
+**Option 2: uv + venv**
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e .
+```
+
+**Option 3: stdlib venv + pip**
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
 ### Basic Installation
+
+```bash
+pip install -e .
+```
+
+### Deployment Mode B (Not Recommended): Direct Global pip
+
+You can install directly into the current Python environment, but this may cause dependency conflicts with other projects:
 
 ```bash
 pip install -e .
@@ -835,6 +873,10 @@ entomokit -v
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contact
+
+- Email: `xtmtd.zf@gmail.com`
 
 ## Citation
 

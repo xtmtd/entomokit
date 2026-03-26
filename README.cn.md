@@ -52,7 +52,45 @@ entomokit <command> [options]
 
 ## 安装
 
+推荐使用隔离的 Python 环境，避免与系统/全局 site-packages 发生依赖冲突。
+
+### 部署模式 A（推荐）：隔离环境
+
+可任选其一：
+
+**选项 1：conda**
+
+```bash
+conda create -n entomokit python=3.11 -y
+conda activate entomokit
+pip install -e .
+```
+
+**选项 2：uv + venv**
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e .
+```
+
+**选项 3：标准库 venv + pip**
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
 ### 基础安装
+
+```bash
+pip install -e .
+```
+
+### 部署模式 B（不推荐）：直接全局 pip
+
+也可以直接安装到当前 Python 环境，但可能导致与其他项目发生依赖冲突：
 
 ```bash
 pip install -e .
@@ -835,6 +873,10 @@ entomokit -v
 ## 许可证
 
 本项目采用 MIT 许可证 - 详见 LICENSE 文件。
+
+## 联系方式
+
+- 邮箱：`xtmtd.zf@gmail.com`
 
 ## 引用
 

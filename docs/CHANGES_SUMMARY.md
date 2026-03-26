@@ -1035,3 +1035,63 @@ python -m entomokit.main segment --help
 python -m entomokit.main classify --help
 python -m entomokit.main classify train --help
 ```
+
+---
+
+## Additional Changes (2026-03-26) — AI Assistant Skill for Guided Workflows
+
+### Summary
+
+Added `entomokit-workflow` skill to enable AI assistants (OpenCode, Claude Code, Codex, etc.) to guide non-CLI users through the EntomoKit pipeline with conversational workflow orchestration.
+
+### New files
+
+**Skill structure (`skills/entomokit-workflow/`):**
+
+| File | Purpose |
+|------|---------|
+| `SKILL.md` | Main skill definition with core rules, phases, and protocols |
+| `scripts/export_cli_schema.py` | Exports machine-readable CLI parameter schema |
+| `scripts/run_guarded_step.py` | Guarded execution bridge for conversational runs |
+| `scripts/resolve_data_dir.py` | Dynamic demo data path discovery |
+| `references/workflow.md` | Per-phase execution script |
+| `references/command-profiles.md` | Parameter defaults per command |
+| `references/csv-validation.md` | Strict CSV checks and fixes |
+| `references/error-catalog.md` | Error mapping and repair actions |
+| `references/teaching-playbook.md` | Opt-in demo flows using sample data |
+| `references/path-resolution.md` | Path resolution rules |
+| `references/dialog-templates.md` | Mandatory pre-run and post-run cards |
+| `references/progress-memory.md` | Session state management |
+| `references/release-checklist.md` | Packaging readiness checks |
+
+### Skill capabilities
+
+**Core Rules:**
+- Run `entomokit doctor` before any substantive step
+- Every command requires explicit user approval with full parameter card
+- Parameter names/options loaded from runtime CLI schema (not memory)
+- Never write outputs into repository `data/` or mixed root paths
+- Create dedicated run roots under `runs/runNNN/`
+- Prefer `entomokit <command>` for all workflow actions
+
+**Workflow Phases:**
+- Phase 0: `doctor`
+- Phase 1: `extract-frames` (optional) → `clean` (required) → `segment`/`synthesize`/`augment` (optional)
+- Phase 2: CSV teaching + validation + `split-csv`
+- Phase 3: `classify train` → `predict` → `evaluate` → `embed`/`cam` → `export-onnx`
+
+**Features:**
+- Parameter validation gate (unknown/missing/invalid params blocked)
+- Label strategy confirmation before CSV generation
+- Device selection guardrail (prefer faster backend)
+- Demo visibility prompts at key checkpoints
+- AutoMM split policy guidance (train + test.known default)
+
+### Documentation
+
+**Updated files:**
+- `README.md` — Added "AI Assistant Integration (Skills)" section with:
+  - What is the skill
+  - Installation instructions for OpenCode, Claude Code, Codex
+  - Usage examples
+  - Feature table

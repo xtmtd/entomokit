@@ -2,7 +2,7 @@
 
 **中文** | [English](README.md)
 
-一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。
+一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
 
 ## 概述
 
@@ -44,6 +44,7 @@ entomokit <command> [options]
 - **嵌入质量指标**：NMI、ARI、Recall@K、kNN 准确率、mAP@R、轮廓系数、UMAP 可视化
 - **并行处理**：多线程图像处理，可配置工作线程数
 - **完整日志**：详细日志记录，支持详细模式和日志文件输出
+- **AI 助手集成**：`entomokit-workflow` skill 支持在 OpenCode、Claude Code、Codex 等工具中进行引导式对话工作流
 
 ## 系统要求
 
@@ -867,6 +868,77 @@ entomokit --install-completion
 entomokit --version
 entomokit -v
 ```
+
+---
+
+## AI 助手集成 (Skills)
+
+EntomoKit 包含一个用于 AI 助手（OpenCode、Claude Code、Codex 等）的 skill，为不熟悉命令行工具的用户提供引导式工作流编排。
+
+### 什么是 `entomokit-workflow` Skill？
+
+`entomokit-workflow` skill 使 AI 助手能够：
+- 引导用户完成完整的数据集准备流程
+- 在执行前验证参数和 CSV 文件
+- 为每个命令提供逐步指导
+- 处理错误并建议修复方案
+- 在中断后恢复工作流
+
+### 安装
+
+**OpenCode:**
+
+```bash
+mkdir -p ~/.config/opencode/skills
+cp -r skills/entomokit-workflow ~/.config/opencode/skills/
+```
+
+**Claude Code:**
+
+```bash
+mkdir -p ~/.claude/skills
+cp -r skills/entomokit-workflow ~/.claude/skills/
+```
+
+**Codex:**
+
+```bash
+mkdir -p ~/.codex/skills
+cp -r skills/entomokit-workflow ~/.codex/skills/
+```
+
+**其他 CLI 工具：** 将 `skills/entomokit-workflow` 目录复制到您工具的 skills 目录中。
+
+### 使用方法
+
+安装后，与 AI 助手开始对话：
+
+**示例 1 - 数据清洗与分类：**
+```
+我需要用 entomokit-workflow skill 对 data/Epidorcus 中的图片进行清洗并训练分类模型。
+```
+
+**示例 2 - 完整流程：**
+```
+使用 entomokit-workflow skill 处理 data/my_insects：清洗图片、划分数据集、训练 convnextv2_femto 分类器。
+```
+
+**示例 3 - 恢复中断的工作流：**
+```
+昨天我在运行 entomokit classify train，帮我继续完成评估和 ONNX 导出。
+```
+
+AI 将引导您完成每个阶段、确认参数并总结结果。
+
+### 功能特性
+
+| 功能 | 描述 |
+|---------|-------------|
+| 参数验证 | 执行前根据 CLI schema 验证所有参数 |
+| CSV 教学 | 帮助生成和验证 `image,label` CSV 文件 |
+| 进度跟踪 | 维护会话状态以支持可恢复的工作流 |
+| 错误恢复 | 将错误映射到修复操作 |
+| 演示模式 | 使用仓库示例数据的可选教学流程 |
 
 ---
 

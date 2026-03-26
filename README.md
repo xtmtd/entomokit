@@ -2,7 +2,7 @@
 
 [中文文档](README.cn.md) | **English**
 
-A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics.
+A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
 
 ## Overview
 
@@ -44,6 +44,7 @@ entomokit <command> [options]
 - **Embedding Quality Metrics**: NMI, ARI, Recall@K, kNN accuracy, mAP@R, Silhouette, UMAP visualization
 - **Parallel Processing**: Multi-threaded image processing with configurable worker count
 - **Comprehensive Logging**: Detailed logging with verbose mode and log file output
+- **AI Assistant Integration**: `entomokit-workflow` skill for guided conversational workflows with OpenCode, Claude Code, Codex, etc.
 
 ## Requirements
 
@@ -867,6 +868,77 @@ Show installed version:
 entomokit --version
 entomokit -v
 ```
+
+---
+
+## AI Assistant Integration (Skills)
+
+EntomoKit includes a skill for AI assistants (OpenCode, Claude Code, Codex, etc.) that provides guided workflow orchestration for users unfamiliar with command-line tools.
+
+### What is `entomokit-workflow` Skill?
+
+The `entomokit-workflow` skill enables AI assistants to:
+- Guide users through the complete dataset preparation pipeline
+- Validate parameters and CSV files before execution
+- Provide step-by-step assistance for each command
+- Handle errors and suggest fixes
+- Resume workflows after interruption
+
+### Installation
+
+**OpenCode:**
+
+```bash
+mkdir -p ~/.config/opencode/skills
+cp -r skills/entomokit-workflow ~/.config/opencode/skills/
+```
+
+**Claude Code:**
+
+```bash
+mkdir -p ~/.claude/skills
+cp -r skills/entomokit-workflow ~/.claude/skills/
+```
+
+**Codex:**
+
+```bash
+mkdir -p ~/.codex/skills
+cp -r skills/entomokit-workflow ~/.codex/skills/
+```
+
+**Other CLI tools:** Copy the `skills/entomokit-workflow` directory to your tool's skills directory.
+
+### Usage
+
+Once installed, start a conversation with your AI assistant:
+
+**Example 1 - Data cleaning and classification:**
+```
+I need to use entomokit-workflow skill to clean images in data/Epidorcus and train a classification model.
+```
+
+**Example 2 - Complete pipeline:**
+```
+Use entomokit-workflow skill to process data/my_insects: clean images, split dataset, and train a convnextv2_femto classifier.
+```
+
+**Example 3 - Resume interrupted workflow:**
+```
+I was running entomokit classify train yesterday. Help me continue with evaluation and ONNX export.
+```
+
+The AI will guide you through each phase, confirm parameters, and summarize results.
+
+### Skill Features
+
+| Feature | Description |
+|---------|-------------|
+| Parameter Validation | Validates all parameters against CLI schema before execution |
+| CSV Teaching | Helps generate and validate `image,label` CSV files |
+| Progress Tracking | Maintains session state for resumable workflows |
+| Error Recovery | Maps errors to repair actions |
+| Demo Mode | Optional teaching flows with repository sample data |
 
 ---
 

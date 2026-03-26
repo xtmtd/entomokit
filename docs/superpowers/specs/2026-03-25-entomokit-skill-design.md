@@ -47,7 +47,7 @@ MVP 仅交付以下两条深流程，其他流程不进入本期。
 
 | Workflow ID | 用户意图（自然语言） | CLI 映射 | 最小输入 | 输出产物 | 完成定义 |
 |---|---|---|---|---|---|
-| WF-01 | 把原始图像/视频处理成可交付分割数据集 | `extract-frames` (可选) -> `clean` -> `segment` | 输入目录或视频文件；输出目录；分割方法 | `cleaned_images/`、`repaired_images/`（可选）、`annotations.coco.json`/YOLO/VOC | 预检通过 + 主链路成功 + 产物存在 + run summary |
+| WF-01 | 把原始图像/视频处理成可交付分割数据集 | `extract-frames` (可选) -> `clean` -> `segment` | 输入目录或视频文件；输出目录；分割方法 | `images/`、`repaired_images/`（可选）、`annotations.coco.json`/YOLO/VOC | 预检通过 + 主链路成功 + 产物存在 + run summary |
 | WF-02 | 把标注 CSV 处理成训练可用划分并输出可读报告 | `split-csv` -> summary adapter | `raw-image-csv`、输出目录、划分策略 | `train.csv`、`val.csv`（可选）、`test.known.csv`、`class_count/*`、`split_report.md` | 预检通过 + 划分成功 + 报告生成 + run summary |
 
 约束：

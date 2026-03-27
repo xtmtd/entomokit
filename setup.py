@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="entomokit",
-    version="0.1.5",
+    version="0.1.6",
     description="A Python toolkit for building insect image datasets with segmentation, frame extraction, cleaning, dataset splitting, and image synthesis capabilities",
     author="Feng ZHANG",
     author_email="xtmtd.zf@gmail.com",

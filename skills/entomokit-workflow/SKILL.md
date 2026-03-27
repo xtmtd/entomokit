@@ -30,6 +30,9 @@ Run the workflow in phases. Keep user data as first priority.
    - prefer `entomokit <command>` for all workflow actions,
    - block custom Python scripts unless user explicitly approves fallback and reason is recorded.
    - when fallback is approved, pass explicit `fallback_reason` to execution gate.
+12. Segment backend guardrail:
+   - supported `--segmentation-method` values are `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
+   - if user asks for unsupported values, mark unsupported and recommend nearest supported method.
 
 ## Parameter Source-of-Truth Protocol
 

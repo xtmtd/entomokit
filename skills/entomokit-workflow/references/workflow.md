@@ -64,6 +64,11 @@ Recommended pre-run chain (must stay in order):
 3. Optional `segment`, `synthesize`, `augment` based on user goals.
 4. Before `clean`, if nested class folders exist, confirm whether to use `--recursive`.
 
+Segment method note:
+
+- Current supported values: `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
+- If user requests unsupported values, treat as unsupported, explain clearly, and propose nearest supported alternatives.
+
 ## Phase 2 - Split Preparation
 
 1. Teach expected CSV format (`image,label`).

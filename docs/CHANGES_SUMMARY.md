@@ -1095,3 +1095,31 @@ Added `entomokit-workflow` skill to enable AI assistants (OpenCode, Claude Code,
   - Installation instructions for OpenCode, Claude Code, Codex
   - Usage examples
   - Feature table
+
+---
+
+## Additional Changes (2026-03-27) — Segmentation Mode Docs Refresh
+
+### Summary
+
+Updated segmentation documentation to match current CLI/runtime behavior, including new bbox crop methods for classical CV segmentation.
+
+### Segmentation behavior/docs alignment
+
+- Added `otsu-bbox` and `grabcut-bbox` as documented `--segmentation-method` options in README docs.
+- Updated segmentation descriptions/examples to show all current methods:
+  - `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
+- Updated segment output structure examples from legacy `cleaned_images/` to current `images/`.
+
+### Skill docs updates
+
+- Updated `skills/entomokit-workflow/` references to reflect current segment method set.
+
+### Updated files
+
+- `README.md`
+- `README.cn.md`
+- `docs/CHANGES_SUMMARY.md`
+- `skills/entomokit-workflow/SKILL.md`
+- `skills/entomokit-workflow/references/workflow.md`
+- `skills/entomokit-workflow/references/command-profiles.md`

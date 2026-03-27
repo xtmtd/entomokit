@@ -24,6 +24,14 @@
 - Typical defaults: `--out-short-size 512`, `--out-image-format jpg`, `--dedup-mode md5`.
 - If input has nested class folders, recommend `--recursive` and wait for user confirmation.
 
+## segment
+
+- Supported `--segmentation-method` values:
+  - `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
+- `--sam3-checkpoint` is required only for `sam3` and `sam3-bbox`.
+- For faster RGB crop output without alpha mask, recommend `otsu-bbox` or `grabcut-bbox`.
+- If user requests unsupported methods, mark unsupported and recommend nearest supported method.
+
 ## split-csv
 
 - Input must contain `image,label` columns.

@@ -15,7 +15,7 @@ entomokit <command> [options]
 | Command | Description |
 |---------|-------------|
 | `extract-frames` | Extract frames from video files |
-| `segment` | Segment insects from images (SAM3, Otsu, GrabCut) |
+| `segment` | Segment insects from images (SAM3, Otsu, GrabCut, bbox crop modes) |
 | `synthesize` | Composite insects onto background images |
 | `clean` | Clean and deduplicate images |
 | `augment` | Augment images with presets or custom albumentations policy |
@@ -31,7 +31,7 @@ entomokit <command> [options]
 ## Features
 
 - **Unified CLI**: Single `entomokit` entry point — no more per-script invocations
-- **Multiple Segmentation Methods**: SAM3 (with alpha channel), SAM3-bbox (cropped), Otsu thresholding, GrabCut
+- **Multiple Segmentation Methods**: `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`
 - **Flexible Repair Strategies**: OpenCV morphological operations, SAM3-based or LaMa hole filling
 - **Annotation Output**: COCO JSON, VOC Pascal XML, YOLO TXT
 - **Video Frame Extraction**: Multithreaded extraction with time range support
@@ -232,7 +232,7 @@ Recommended workflow command order:
 
 ### Segment Command
 
-Segment insects from images using multiple methods (SAM3, Otsu, GrabCut). Optionally generates annotations in COCO, VOC, or YOLO format.
+Segment insects from images using multiple methods (`sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`). Optionally generates annotations in COCO, VOC, or YOLO format.
 
 #### Basic Usage
 
@@ -267,6 +267,18 @@ entomokit segment \
     --segmentation-method sam3-bbox \
     --padding-ratio 0.1
 
+# Fast bbox crop mode with Otsu (RGB crop output)
+entomokit segment \
+    --input-dir images/ --out-dir outputs/ \
+    --segmentation-method otsu-bbox \
+    --padding-ratio 0.1
+
+# Fast bbox crop mode with GrabCut (RGB crop output)
+entomokit segment \
+    --input-dir images/ --out-dir outputs/ \
+    --segmentation-method grabcut-bbox \
+    --padding-ratio 0.1
+
 # With LaMa repair for filling holes
 entomokit segment \
     --input-dir images/ --out-dir outputs/ \
@@ -281,7 +293,7 @@ entomokit segment \
 |-----------|-------------|---------|
 | `--input-dir` | Input directory | Required |
 | `--out-dir` | Output directory | Required |
-| `--segmentation-method` | `sam3`, `sam3-bbox`, `otsu`, `grabcut` | `sam3` |
+| `--segmentation-method` | `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox` | `sam3` |
 | `--sam3-checkpoint` | SAM3 checkpoint path | Required for sam3/sam3-bbox |
 | `--hint` | Text prompt for SAM3 grounding | `insect` |
 | `--device` | `auto`, `cpu`, `cuda`, `mps` | `auto` |
@@ -297,7 +309,7 @@ entomokit segment \
 ```
 output_dir/
 ├── annotations.coco.json     # COCO annotations
-├── cleaned_images/           # Segmented images
+├── images/                   # Segmented images
 │   ├── image_01.png
 │   └── ...
 └── repaired_images/          # (if repair-strategy enabled)

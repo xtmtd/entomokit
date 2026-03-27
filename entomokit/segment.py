@@ -30,7 +30,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--segmentation-method",
         default="sam3",
-        choices=["sam3", "sam3-bbox", "otsu", "grabcut"],
+        choices=["sam3", "sam3-bbox", "otsu", "otsu-bbox", "grabcut", "grabcut-bbox"],
         help="Segmentation method.",
     )
     p.add_argument(

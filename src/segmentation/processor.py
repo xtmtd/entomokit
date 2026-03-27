@@ -100,26 +100,66 @@ class SegmentationProcessor:
 
     def _segment_with_otsu(self, image: np.ndarray) -> List[np.ndarray]:
         """Segment using Otsu's thresholding method (matches detect_bounding_box.py)."""
-        # Use BGR color space like reference script
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        image_shape: Tuple[int, int] = (image.shape[0], image.shape[1])
+        thresh_binary = cv2.threshold(
+            blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )[1]
+        thresh_binary_inv = cv2.threshold(
+            blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )[1]
 
-        # Morphological operations to clean up mask
+        binary_masks = self._contour_masks_from_binary(thresh_binary, image_shape)
+        inv_masks = self._contour_masks_from_binary(thresh_binary_inv, image_shape)
+
+        binary_score = self._score_otsu_candidate(binary_masks, image_shape)
+        inv_score = self._score_otsu_candidate(inv_masks, image_shape)
+
+        return inv_masks if inv_score > binary_score else binary_masks
+
+    def _contour_masks_from_binary(
+        self, binary_image: np.ndarray, image_shape: Tuple[int, int]
+    ) -> List[np.ndarray]:
+        """Extract contour masks from a binary image with basic area filtering."""
+        h, w = image_shape
+        image_area = float(h * w)
+        min_area = max(25.0, image_area * 0.001)
+
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        dilate = cv2.dilate(thresh, kernel, iterations=2)
-        erode = cv2.erode(dilate, kernel, iterations=2)
+        cleaned = cv2.erode(cv2.dilate(binary_image, kernel, iterations=2), kernel, iterations=2)
 
-        # Find contours
         contours, _ = cv2.findContours(
-            erode, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        masks = []
+
+        masks: List[np.ndarray] = []
         for contour in contours:
-            mask = np.zeros(image.shape[:2], dtype=np.uint8)
+            if cv2.contourArea(contour) < min_area:
+                continue
+            mask = np.zeros((h, w), dtype=np.uint8)
             cv2.drawContours(mask, [contour], -1, 1, -1)
             masks.append(mask.astype(bool))
         return masks
+
+    def _score_otsu_candidate(
+        self, masks: List[np.ndarray], image_shape: Tuple[int, int]
+    ) -> float:
+        """Score Otsu candidate masks; penalize near-full-image foreground."""
+        if not masks:
+            return float("-inf")
+
+        image_area = float(image_shape[0] * image_shape[1])
+        areas = [float(np.sum(mask)) for mask in masks]
+        largest_ratio = max(areas) / image_area
+        total_ratio = sum(areas) / image_area
+
+        score = -abs(largest_ratio - 0.2) - 0.02 * min(len(masks), 20)
+        if largest_ratio > 0.95:
+            score -= 1.0
+        if total_ratio > 0.98:
+            score -= 0.5
+        return score
 
     def _enlarge_bbox(
         self, x: int, y: int, w: int, h: int, img_w: int, img_h: int
@@ -194,6 +234,11 @@ class SegmentationProcessor:
             # Convert to binary mask: 2=bg, 3=fg-pr, 1=bg-pr, 0=fg
             result_mask = np.where((mask == 2) | (mask == 0), 0, 255).astype("uint8")
 
+            if scale != 1.0:
+                result_mask = cv2.resize(
+                    result_mask, (w, h), interpolation=cv2.INTER_NEAREST
+                )
+
             # Find contours
             contours, _ = cv2.findContours(
                 result_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
@@ -252,13 +297,18 @@ class SegmentationProcessor:
         repair_image: Optional[np.ndarray] = None
 
         # Determine if using bbox-only mode
-        is_bbox_mode = self.segmentation_method in ["sam3-bbox", "bbox"]
+        is_bbox_mode = self.segmentation_method in [
+            "sam3-bbox",
+            "otsu-bbox",
+            "grabcut-bbox",
+            "bbox",
+        ]
 
         # Run segmentation based on method
-        if self.segmentation_method == "otsu":
+        if self.segmentation_method in ["otsu", "otsu-bbox"]:
             masks = self._segment_with_otsu(image)
             scores = [1.0] * len(masks)
-        elif self.segmentation_method == "grabcut":
+        elif self.segmentation_method in ["grabcut", "grabcut-bbox"]:
             masks = self._segment_with_grabcut(image)
             scores = [1.0] * len(masks)
             if not masks:

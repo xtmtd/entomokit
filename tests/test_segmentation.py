@@ -1,6 +1,8 @@
 # tests/test_segmentation.py
 import pytest
 import numpy as np
+import cv2
+from PIL import Image
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import tempfile
@@ -252,6 +254,95 @@ def test_lama_mask_dilation_applies(monkeypatch):
     assert dummy_inpainter.calls, "LaMa inpainter should be invoked"
     _, used_mask = dummy_inpainter.calls[-1]
     assert used_mask.sum() > mask.sum(), "Dilated mask should have larger area"
+
+
+def test_otsu_avoids_full_image_foreground():
+    processor = SegmentationProcessor(
+        sam3_checkpoint="fake.pt",
+        device="cpu",
+        segmentation_method="otsu",
+    )
+
+    image = np.full((300, 400, 3), 240, dtype=np.uint8)
+    image[100:220, 150:260] = 30
+
+    masks = processor._segment_with_otsu(image)
+    assert masks, "Otsu should produce at least one contour mask"
+
+    largest = max(masks, key=lambda m: int(np.sum(m)))
+    largest_ratio = float(np.sum(largest)) / float(image.shape[0] * image.shape[1])
+    assert largest_ratio < 0.5, "Foreground should not collapse to near full image"
+
+
+def test_grabcut_rescales_masks_for_large_images(monkeypatch):
+    processor = SegmentationProcessor(
+        sam3_checkpoint="fake.pt",
+        device="cpu",
+        segmentation_method="grabcut",
+    )
+
+    image = np.zeros((2000, 3000, 3), dtype=np.uint8)
+
+    def fake_grabcut(img, mask, rect, bg_model, fg_model, iters, mode):
+        mask[:] = cv2.GC_BGD
+        mask[350:500, 600:760] = cv2.GC_FGD
+
+    monkeypatch.setattr(cv2, "grabCut", fake_grabcut)
+
+    masks = processor._segment_with_grabcut(image)
+    assert masks, "GrabCut path should produce a foreground mask"
+
+    largest = max(masks, key=lambda m: int(np.sum(m)))
+    ys, xs = np.where(largest)
+    assert len(xs) > 0 and len(ys) > 0
+
+    # With correct scale-back, the object should map near original-image bottom-right.
+    assert int(xs.max()) > 2000
+    assert int(ys.max()) > 1200
+
+
+def test_otsu_bbox_outputs_rgb_crop():
+    processor = SegmentationProcessor(
+        sam3_checkpoint="fake.pt",
+        device="cpu",
+        segmentation_method="otsu-bbox",
+    )
+
+    image = np.full((240, 320, 3), 240, dtype=np.uint8)
+    image[80:180, 120:220] = 20
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = processor.process_image(image=image, output_dir=tmpdir, base_name="bbox_otsu")
+        assert len(result["output_files"]) == 1
+
+        out_path = Path(result["output_files"][0])
+        assert out_path.exists()
+        assert Image.open(out_path).mode == "RGB"
+
+
+def test_grabcut_bbox_outputs_rgb_crop(monkeypatch):
+    processor = SegmentationProcessor(
+        sam3_checkpoint="fake.pt",
+        device="cpu",
+        segmentation_method="grabcut-bbox",
+    )
+
+    image = np.full((200, 300, 3), 255, dtype=np.uint8)
+    fake_mask = np.zeros((200, 300), dtype=bool)
+    fake_mask[40:160, 80:220] = True
+    monkeypatch.setattr(processor, "_segment_with_grabcut", lambda img: [fake_mask])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = processor.process_image(
+            image=image,
+            output_dir=tmpdir,
+            base_name="bbox_grabcut",
+        )
+        assert len(result["output_files"]) == 1
+
+        out_path = Path(result["output_files"][0])
+        assert out_path.exists()
+        assert Image.open(out_path).mode == "RGB"
 
 
 def test_e2e_segment_real_insect_image():

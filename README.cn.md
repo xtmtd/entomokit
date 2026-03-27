@@ -15,7 +15,7 @@ entomokit <command> [options]
 | 命令 | 描述 |
 |---------|-------------|
 | `extract-frames` | 从视频文件中提取帧 |
-| `segment` | 从图像中分割昆虫（SAM3、Otsu、GrabCut） |
+| `segment` | 从图像中分割昆虫（SAM3、Otsu、GrabCut 与 bbox 裁剪模式） |
 | `synthesize` | 将昆虫合成到背景图像上 |
 | `clean` | 清洗和去重图像 |
 | `augment` | 使用预设或自定义 albumentations 策略进行图像增强 |
@@ -31,7 +31,7 @@ entomokit <command> [options]
 ## 功能特性
 
 - **统一命令行接口**：单一 `entomokit` 入口，无需逐脚本调用
-- **多种分割方法**：SAM3（带 alpha 通道）、SAM3-bbox（裁剪）、Otsu 阈值、GrabCut
+- **多种分割方法**：`sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox`
 - **灵活的修复策略**：OpenCV 形态学操作、基于 SAM3 或 LaMa 的孔洞填充
 - **标注输出**：COCO JSON、VOC Pascal XML、YOLO TXT
 - **视频抽帧**：多线程提取，支持时间范围设定
@@ -232,7 +232,7 @@ models/big-lama/
 
 ### segment 命令
 
-使用多种方法（SAM3、Otsu、GrabCut）从图像中分割昆虫。可选择生成 COCO、VOC 或 YOLO 格式的标注。
+使用多种方法（`sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox`）从图像中分割昆虫。可选择生成 COCO、VOC 或 YOLO 格式的标注。
 
 #### 基本用法
 
@@ -267,6 +267,18 @@ entomokit segment \
     --segmentation-method sam3-bbox \
     --padding-ratio 0.1
 
+# 使用 Otsu 的快速 bbox 裁剪模式（输出 RGB 裁剪图）
+entomokit segment \
+    --input-dir images/ --out-dir outputs/ \
+    --segmentation-method otsu-bbox \
+    --padding-ratio 0.1
+
+# 使用 GrabCut 的快速 bbox 裁剪模式（输出 RGB 裁剪图）
+entomokit segment \
+    --input-dir images/ --out-dir outputs/ \
+    --segmentation-method grabcut-bbox \
+    --padding-ratio 0.1
+
 # 使用 LaMa 修复填充孔洞
 entomokit segment \
     --input-dir images/ --out-dir outputs/ \
@@ -281,7 +293,7 @@ entomokit segment \
 |-----------|-------------|---------|
 | `--input-dir` | 输入目录 | 必填 |
 | `--out-dir` | 输出目录 | 必填 |
-| `--segmentation-method` | `sam3`、`sam3-bbox`、`otsu`、`grabcut` | `sam3` |
+| `--segmentation-method` | `sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox` | `sam3` |
 | `--sam3-checkpoint` | SAM3 检查点路径 | sam3/sam3-bbox 必填 |
 | `--hint` | SAM3 文本提示 | `insect` |
 | `--device` | `auto`、`cpu`、`cuda`、`mps` | `auto` |
@@ -297,7 +309,7 @@ entomokit segment \
 ```
 output_dir/
 ├── annotations.coco.json     # COCO 标注
-├── cleaned_images/           # 分割后的图像
+├── images/                   # 分割后的图像
 │   ├── image_01.png
 │   └── ...
 └── repaired_images/          # （启用 repair-strategy 时）

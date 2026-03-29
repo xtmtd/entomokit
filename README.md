@@ -55,6 +55,13 @@ entomokit <command> [options]
 
 Recommended: use an isolated Python environment to avoid dependency conflicts with your system/site-packages.
 
+Before installation, clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/xtmtd/entomokit.git
+cd entomokit
+```
+
 ### Deployment Mode A (Recommended): Isolated Environment
 
 Choose one of the following:

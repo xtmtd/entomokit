@@ -55,6 +55,13 @@ entomokit <command> [options]
 
 推荐使用隔离的 Python 环境，避免与系统/全局 site-packages 发生依赖冲突。
 
+安装前请先克隆仓库并进入项目目录：
+
+```bash
+git clone https://github.com/xtmtd/entomokit.git
+cd entomokit
+```
+
 ### 部署模式 A（推荐）：隔离环境
 
 可任选其一：

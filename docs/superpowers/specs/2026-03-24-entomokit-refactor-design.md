@@ -422,7 +422,7 @@ classify 各命令（train/predict/evaluate/embed/cam）统一支持以下三个
 
 ## 8. 依赖管理
 
-AutoGluon 和 pytorch-grad-cam 是重型依赖，通过 `setup.py` 的 `extras_require` 管理，不作为默认安装依赖：
+AutoGluon 和 grad-cam 是重型依赖，通过 `setup.py` 的 `extras_require` 管理，不作为默认安装依赖：
 
 ```python
 extras_require={
@@ -434,7 +434,7 @@ extras_require={
         "autogluon.multimodal",
         "timm",
         "umap-learn",
-        "pytorch-grad-cam",
+        "grad-cam",
         "onnxruntime",
         "scikit-learn",
     ],

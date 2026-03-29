@@ -40,7 +40,7 @@ setup(
             "autogluon.multimodal>=1.4.0",
             "timm>=0.9.0",
             "umap-learn",
-            "pytorch-grad-cam",
+            "grad-cam",
             "onnxruntime",
             "scikit-learn",
         ],

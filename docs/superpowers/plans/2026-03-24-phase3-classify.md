@@ -6,7 +6,7 @@
 
 **Architecture:** 业务逻辑写在 `src/classification/` 各模块，CLI 参数解析写在 `entomokit/classify/` 各模块，两者通过简洁函数接口解耦。`export-onnx` 直接调用 `MultiModalPredictor.export_onnx()`。
 
-**Tech Stack:** AutoGluon MultiModalPredictor, timm, pytorch-grad-cam, umap-learn, scikit-learn, onnxruntime, torch
+**Tech Stack:** AutoGluon MultiModalPredictor, timm, grad-cam, umap-learn, scikit-learn, onnxruntime, torch
 
 **Spec:** `docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md` — Section 5.2–5.7, Section 7
 

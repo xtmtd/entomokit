@@ -462,7 +462,7 @@ Refactored all standalone scripts into a unified `entomokit <command>` CLI (insp
 
 **`setup.py` changes:**
 - Single entry point: `entomokit = entomokit.main:main`
-- Added `classify` extras_require group (AutoGluon, timm, pytorch-grad-cam, umap-learn, onnxruntime)
+- Added `classify` extras_require group (AutoGluon, timm, grad-cam, umap-learn, onnxruntime)
 
 ### Phase 2 — Annotation Format Alignment (detcli convention)
 

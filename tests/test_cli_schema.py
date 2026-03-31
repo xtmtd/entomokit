@@ -21,6 +21,7 @@ def test_clean_schema_contains_required_and_enum_metadata() -> None:
     assert params["--input-dir"]["required"] is True
     assert params["--out-dir"]["required"] is True
     assert params["--out-image-format"]["value_hint"] == "jpg | png | tif"
+    assert params["--keep-exif"]["action_kind"] == "store_true"
 
 
 def test_unknown_command_schema_returns_none() -> None:

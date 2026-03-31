@@ -36,9 +36,6 @@ def write_annotations(
         fmt: One of 'coco', 'yolo', 'voc'.
         coco_bbox_format: 'xywh' or 'xyxy' (COCO only).
     """
-    import cv2
-    import supervision as sv
-
     fmt = fmt.lower()
     if fmt not in SUPPORTED_FORMATS:
         raise ValueError(
@@ -48,6 +45,9 @@ def write_annotations(
         raise ValueError(
             f"Unknown coco_bbox_format: {coco_bbox_format!r}. Use 'xywh' or 'xyxy'."
         )
+
+    import cv2
+    import supervision as sv
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -130,7 +130,8 @@ def _write_yolo_yaml(
     deduped = list(dict.fromkeys(class_names))  # preserve order, remove dups
     quoted = ", ".join(f'"{c}"' for c in deduped)
     yaml_path.write_text(
-        f"train: {train_path}\nnc: {len(deduped)}\nnames: [{quoted}]\n"
+        f"train: {train_path}\nnc: {len(deduped)}\nnames: [{quoted}]\n",
+        encoding="utf-8",
     )
 
 
@@ -138,13 +139,17 @@ def _write_voc_imagesets(out_dir: Path, stems: List[str]) -> None:
     """Write ImageSets/Main/default.txt."""
     imagesets_dir = out_dir / "ImageSets" / "Main"
     imagesets_dir.mkdir(parents=True, exist_ok=True)
-    (imagesets_dir / "default.txt").write_text("\n".join(stems) + "\n")
+    (imagesets_dir / "default.txt").write_text(
+        "\n".join(stems) + "\n", encoding="utf-8"
+    )
 
 
 def _rewrite_coco_bbox_to_xyxy(json_path: Path) -> None:
     """In-place convert bbox in COCO JSON from xywh → xyxy."""
-    data = json.loads(json_path.read_text())
+    data = json.loads(json_path.read_text(encoding="utf-8"))
     for ann in data.get("annotations", []):
         x, y, w, h = ann["bbox"]
         ann["bbox"] = [x, y, x + w, y + h]
-    json_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    json_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )

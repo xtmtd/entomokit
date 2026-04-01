@@ -6,6 +6,9 @@ import tempfile
 import numpy as np
 import pytest
 from pathlib import Path
+
+pytest.importorskip("cv2")
+
 from src.metadata import COCOMetadataManager, mask_to_bbox, mask_to_polygon
 
 
@@ -222,7 +225,7 @@ def test_coco_metadata_manager_save():
         # Verify file exists and content is valid JSON
         assert output_path.exists()
         
-        with open(output_path) as f:
+        with open(output_path, encoding="utf-8") as f:
             data = json.load(f)
         
         assert "images" in data
@@ -239,6 +242,20 @@ def test_coco_metadata_manager_save_creates_dirs():
         manager.save(output_path)
         
         assert output_path.exists()
+
+
+def test_coco_metadata_manager_save_writes_utf8() -> None:
+    manager = COCOMetadataManager()
+    manager.add_category("昆虫")
+    manager.add_image("中文.png", 100, 100)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "annotations.json"
+        manager.save(output_path)
+
+        raw = output_path.read_bytes()
+        assert "昆虫".encode("utf-8") in raw
+        assert "中文.png".encode("utf-8") in raw
 
 
 def test_coco_metadata_manager_multiple_categories():

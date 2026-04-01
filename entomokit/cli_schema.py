@@ -65,6 +65,7 @@ def _action_schema(action: argparse.Action) -> dict[str, object]:
         "name": name,
         "dest": action.dest,
         "options": list(action.option_strings),
+        "action_kind": _infer_action_kind(action),
         "required": bool(getattr(action, "required", False)),
         "default": _stringify_default(getattr(action, "default", None)),
         "choices": [str(choice) for choice in action.choices]
@@ -82,6 +83,14 @@ def _infer_value_type(action: argparse.Action) -> str:
     if action.type in (int, float, str):
         return action.type.__name__
     return "str"
+
+
+def _infer_action_kind(action: argparse.Action) -> str:
+    if isinstance(action, argparse._StoreTrueAction):
+        return "store_true"
+    if isinstance(action, argparse._StoreFalseAction):
+        return "store_false"
+    return "store"
 
 
 def build_command_schemas(

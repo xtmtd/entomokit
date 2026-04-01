@@ -5,6 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from pathlib import Path
+
+
+def _ensure_project_root_on_path() -> None:
+    root = Path(__file__).resolve().parents[3]
+    root_str = str(root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+
+_ensure_project_root_on_path()
 
 from entomokit.workflow_gate import run_guarded_step
 
@@ -17,7 +29,11 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="Schema command path, e.g. clean or classify train",
     )
-    p.add_argument("--command", required=True, help="Shell command to execute")
+    p.add_argument(
+        "--command",
+        required=True,
+        help="Single command to validate and execute through the guarded runner.",
+    )
     p.add_argument(
         "--param",
         action="append",

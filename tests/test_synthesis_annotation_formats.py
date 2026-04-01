@@ -1,4 +1,7 @@
 import numpy as np
+import pytest
+
+pytest.importorskip("cv2")
 
 from src.synthesis.processor import SynthesisProcessor
 
@@ -46,7 +49,7 @@ def test_save_yolo_single_does_not_pass_unsupported_mask_area(tmp_path):
     assert (tmp_path / "labels" / "sample.txt").exists()
     yaml_path = tmp_path / "data.yaml"
     assert yaml_path.exists()
-    yaml_content = yaml_path.read_text()
+    yaml_content = yaml_path.read_text(encoding="utf-8")
     assert "nc: 1" in yaml_content
     assert 'names: ["insect"]' in yaml_content
     assert "train: images" in yaml_content

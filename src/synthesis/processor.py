@@ -882,7 +882,7 @@ class SynthesisProcessor:
         base_name = Path(output_filename).stem
         annotations_path = annotations_dir / f"{base_name}.xml"
 
-        with open(annotations_path, "w") as f:
+        with open(annotations_path, "w", encoding="utf-8") as f:
             f.write(xml_content)
 
     def _save_yolo_single(
@@ -964,12 +964,14 @@ class SynthesisProcessor:
         base_name = Path(output_filename).stem
         labels_path = labels_dir / f"{base_name}.txt"
 
-        with open(labels_path, "w") as f:
+        with open(labels_path, "w", encoding="utf-8") as f:
             f.write(yolo_content)
 
         yaml_dir = output_dir if output_dir else Path(self.output_subdir).parent
         yaml_path = yaml_dir / "data.yaml"
-        yaml_path.write_text('train: images\nnc: 1\nnames: ["insect"]\n')
+        yaml_path.write_text(
+            'train: images\nnc: 1\nnames: ["insect"]\n', encoding="utf-8"
+        )
 
     def _get_annotation_output_dir(self, output_dir: Path) -> Path:
         """Get annotation output directory based on format (detcli-aligned paths)."""

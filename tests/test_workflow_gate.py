@@ -5,8 +5,8 @@ from __future__ import annotations
 from entomokit.workflow_gate import run_guarded_step
 
 
-def _ok_runner(command: str) -> tuple[int, str, str]:
-    return 0, f"ran: {command}", ""
+def _ok_runner(command: list[str]) -> tuple[int, str, str]:
+    return 0, f"ran: {' '.join(command)}", ""
 
 
 def test_run_guarded_step_success() -> None:
@@ -22,6 +22,7 @@ def test_run_guarded_step_success() -> None:
     assert result["status"] == "success"
     assert result["step_name"] == "clean"
     assert str(result["approved_params"].get("--input-dir")) == "./raw"
+    assert result["executed_command"].startswith("entomokit clean")
 
 
 def test_run_guarded_step_blocks_non_entomokit_command() -> None:
@@ -66,3 +67,67 @@ def test_run_guarded_step_blocks_invalid_params_before_execution() -> None:
 
     assert result["status"] == "blocked"
     assert "must be one of" in "\n".join(result["errors"])
+
+
+def test_run_guarded_step_rebuilds_entomokit_command_from_approved_params() -> None:
+    executed: list[list[str]] = []
+
+    def runner(command: list[str]) -> tuple[int, str, str]:
+        executed.append(command)
+        return 0, "", ""
+
+    result = run_guarded_step(
+        step_name="clean",
+        command_path="clean",
+        command="entomokit clean --input-dir ./raw --out-dir ./MALICIOUS --threads xyz",
+        user_inputs={"--input-dir": "./raw", "--out-dir": "./safe"},
+        runner=runner,
+    )
+
+    assert result["status"] == "success"
+    assert executed == [
+        [
+            "entomokit",
+            "clean",
+            "--input-dir",
+            "./raw",
+            "--out-dir",
+            "./safe",
+            "--out-short-size",
+            "512",
+            "--out-image-format",
+            "jpg",
+            "--threads",
+            "12",
+            "--dedup-mode",
+            "md5",
+            "--phash-threshold",
+            "5",
+        ]
+    ]
+
+
+def test_run_guarded_step_blocks_shell_control_syntax() -> None:
+    result = run_guarded_step(
+        step_name="clean",
+        command_path="clean",
+        command="entomokit clean --input-dir ./raw --out-dir ./out && echo PWNED",
+        user_inputs={"--input-dir": "./raw", "--out-dir": "./out"},
+        runner=_ok_runner,
+    )
+
+    assert result["status"] == "blocked"
+    assert "Shell control syntax is not allowed" in result["message"]
+
+
+def test_run_guarded_step_blocks_command_path_mismatch() -> None:
+    result = run_guarded_step(
+        step_name="doctor",
+        command_path="doctor",
+        command="entomokit --version",
+        user_inputs={},
+        runner=_ok_runner,
+    )
+
+    assert result["status"] == "blocked"
+    assert "does not match the guarded step" in result["message"]

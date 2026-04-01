@@ -5,9 +5,13 @@ import pytest
 from pathlib import Path
 
 
-def _make_dataset_and_write(tmp_path, fmt, coco_bbox_format="xywh"):
+def _make_dataset_and_write(
+    tmp_path, fmt, coco_bbox_format="xywh", class_names=None
+):
     """Helper: create minimal writer call with real supervision."""
-    import supervision as sv
+    pytest.importorskip("cv2")
+    sv = pytest.importorskip("supervision")
+    pytest.importorskip("PIL")
     import numpy as np
     from src.common.annotation_writer import write_annotations
     from PIL import Image
@@ -24,7 +28,7 @@ def _make_dataset_and_write(tmp_path, fmt, coco_bbox_format="xywh"):
     write_annotations(
         image_paths=[img_path],
         detections_per_image={str(img_path): dets},
-        class_names=["insect"],
+        class_names=class_names or ["insect"],
         out_dir=tmp_path / "out",
         fmt=fmt,
         coco_bbox_format=coco_bbox_format,
@@ -72,6 +76,35 @@ def test_yolo_yaml_quoted_names(tmp_path):
     assert "train: images" in content
     assert 'names: ["insect"]' in content
     assert "nc: 1" in content
+
+
+def test_yolo_yaml_written_as_utf8(tmp_path):
+    from src.common.annotation_writer import _write_yolo_yaml
+
+    yaml_path = tmp_path / "data.yaml"
+    _write_yolo_yaml(yaml_path, ["昆虫"])
+    raw = yaml_path.read_bytes()
+    assert "昆虫".encode("utf-8") in raw
+
+
+def test_coco_bbox_rewrite_writes_utf8(tmp_path):
+    from src.common.annotation_writer import _rewrite_coco_bbox_to_xyxy
+
+    json_path = tmp_path / "annotations.coco.json"
+    json_path.write_text(
+        json.dumps(
+            {
+                "categories": [{"id": 1, "name": "昆虫"}],
+                "annotations": [{"bbox": [10, 10, 40, 40]}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _rewrite_coco_bbox_to_xyxy(json_path)
+    raw = json_path.read_bytes()
+    assert "昆虫".encode("utf-8") in raw
 
 
 def test_voc_layout(tmp_path):

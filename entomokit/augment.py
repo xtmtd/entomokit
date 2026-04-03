@@ -34,12 +34,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         help="Output directory for augmented images and manifest.",
     )
-    p.add_argument(
+    mode_group = p.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--preset",
-        default="light",
+        default=None,
         help="Augmentation preset: light, medium, heavy, safe-for-small-dataset.",
     )
-    p.add_argument(
+    mode_group.add_argument(
         "--policy",
         default=None,
         help="Path to custom augmentation policy JSON file. Mutually exclusive with --preset.",
@@ -71,7 +72,7 @@ def run(args: argparse.Namespace) -> None:
     save_log(out_dir, args)
 
     custom = None
-    preset = args.preset
+    preset = args.preset or "light"
     if args.policy is not None:
         custom = json.loads(Path(args.policy).read_text(encoding="utf-8"))
         preset = None

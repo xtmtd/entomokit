@@ -185,7 +185,7 @@ class ImageCleaner:
                 except Exception:
                     pass
 
-    def process_one(self, src: Path, log_file, log_lock: Lock) -> None:
+    def process_one(self, src: Path, log_file, log_lock: Lock) -> str:
         """Process a single image file."""
         try:
             suffix = src.suffix.lower()
@@ -197,7 +197,7 @@ class ImageCleaner:
                 with log_lock:
                     log_file.write(f"Unidentified image: {src}\n")
                     log_file.flush()
-                return
+                return "errors"
 
             if self.dedup_mode == "md5":
                 md5 = compute_md5(img)
@@ -209,7 +209,7 @@ class ImageCleaner:
                                 f"Duplicate(md5): {src} == {existing_file} (same MD5: {md5[:8]}...)\n"
                             )
                             log_file.flush()
-                        return
+                        return "skipped"
                     self.dedup_hashes_md5[md5] = src.name
 
             elif self.dedup_mode == "phash":
@@ -220,7 +220,7 @@ class ImageCleaner:
                     with log_lock:
                         log_file.write(f"Cannot compute valid phash: {src}\n")
                         log_file.flush()
-                    return
+                    return "errors"
 
                 with self.phash_lock:
                     for old_value, old_name in self.dedup_hashes_phash:
@@ -231,7 +231,7 @@ class ImageCleaner:
                                     f"Duplicate(phash): {src} == {old_name} (hamming distance={dist})\n"
                                 )
                                 log_file.flush()
-                            return
+                            return "skipped"
 
             img = resize_short_edge(img, self.out_short_size)
 
@@ -259,10 +259,13 @@ class ImageCleaner:
                 with self.phash_lock:
                     self.dedup_hashes_phash.append((ph_value, dst.name))
 
+            return "processed"
+
         except Exception as e:
             with log_lock:
                 log_file.write(f"Error processing {src}: {e}\n")
                 log_file.flush()
+            return "errors"
 
     def process_directory(
         self,
@@ -316,8 +319,8 @@ class ImageCleaner:
 
                     for task in tqdm(tasks, desc="Processing images"):
                         try:
-                            task.result()
-                            results["processed"] += 1
+                            status = task.result()
+                            results[status] += 1
                         except Exception:
                             results["errors"] += 1
 
@@ -331,8 +334,8 @@ class ImageCleaner:
 
                     for future in futures:
                         try:
-                            future.result()
-                            results["processed"] += 1
+                            status = future.result()
+                            results[status] += 1
                         except Exception:
                             results["errors"] += 1
 

@@ -445,17 +445,17 @@ Split a labelled CSV into train / val / test files.
 ```bash
 # Ratio split (80/10/10)
 entomokit split-csv --raw-image-csv data/images.csv \
-    --known-test-classes-ratio 0.1 --val-ratio 0.1 --out-dir datasets/
+    --known-test-sample-ratio 0.1 --val-ratio 0.1 --out-dir datasets/
 
 # Count split with image copy
 entomokit split-csv --raw-image-csv data/images.csv --mode count \
-    --known-test-classes-count 100 --val-count 50 \
+    --known-test-sample-count 100 --val-count 50 \
     --copy-images --images-dir images/ --out-dir datasets/
 
 # With unknown class test split (for open-set evaluation)
 entomokit split-csv --raw-image-csv data/images.csv \
-    --unknown-test-classes-ratio 0.1 \
-    --known-test-classes-ratio 0.1 \
+    --unknown-test-sample-ratio 0.1 \
+    --known-test-sample-ratio 0.1 \
     --out-dir datasets/
 
 # Filter classes with too few samples
@@ -470,8 +470,10 @@ entomokit split-csv --raw-image-csv data/images.csv \
 | `--out-dir` | Output directory | Required |
 | `--mode` | `ratio` or `count` | ratio |
 | `--val-ratio` / `--val-count` | Validation split | None |
-| `--known-test-classes-ratio` | Known-class test ratio | 0.1 |
-| `--unknown-test-classes-ratio` | Unknown-class test ratio | 0 |
+| `--known-test-sample-ratio` | Known-sample test ratio | 0.1 |
+| `--unknown-test-sample-ratio` | Unknown-sample test ratio | 0 |
+| `--known-test-sample-count` | Known-sample test target count (count mode) | 0 |
+| `--unknown-test-sample-count` | Unknown-sample test target count (count mode) | 0 |
 | `--min-count-per-class` | Drop classes with fewer images | 0 |
 | `--max-count-per-class` | Cap images per class | None |
 | `--copy-images` | Copy images into split subdirs | No |

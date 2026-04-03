@@ -152,7 +152,7 @@ def _get_version() -> str:
     try:
         return importlib.metadata.version("entomokit")
     except importlib.metadata.PackageNotFoundError:
-        return "0.1.4"
+        return "0.1.6"
 
 
 def _activate_argcomplete(parser: argparse.ArgumentParser) -> None:

@@ -87,10 +87,10 @@ def test_split_csv_run_passes_known_test_count(tmp_path, monkeypatch):
     args = argparse.Namespace(
         raw_image_csv=str(csv_path),
         mode="count",
-        unknown_test_classes_ratio=0.0,
-        known_test_classes_ratio=0.1,
-        unknown_test_classes_count=3,
-        known_test_classes_count=7,
+        unknown_test_sample_ratio=0.0,
+        known_test_sample_ratio=0.1,
+        unknown_test_sample_count=3,
+        known_test_sample_count=7,
         val_ratio=0.0,
         val_count=0,
         min_count_per_class=0,
@@ -106,3 +106,48 @@ def test_split_csv_run_passes_known_test_count(tmp_path, monkeypatch):
 
     assert captured["split_kwargs"]["known_test_count"] == 7
     assert captured["split_kwargs"]["unknown_test_count"] == 3
+
+
+def test_count_mode_val_split_has_no_train_overlap(tmp_path):
+    rows = []
+    for i in range(10):
+        rows.append({"image": f"cat_{i}.jpg", "label": "cat"})
+    for i in range(10):
+        rows.append({"image": f"dog_{i}.jpg", "label": "dog"})
+
+    csv_path = tmp_path / "data.csv"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    splitter = DatasetSplitter(str(csv_path), str(tmp_path / "out"), seed=0)
+    splitter.split(mode="count", known_test_count=4, val_count=4)
+
+    train = pd.read_csv(tmp_path / "out" / "train.csv")
+    val = pd.read_csv(tmp_path / "out" / "val.csv")
+    overlap = set(train["image"]).intersection(set(val["image"]))
+    assert overlap == set()
+
+
+def test_split_csv_parser_uses_sample_based_argument_names() -> None:
+    from entomokit.main import _build_parser
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "split-csv",
+            "--raw-image-csv",
+            "data.csv",
+            "--unknown-test-sample-ratio",
+            "0.2",
+            "--known-test-sample-ratio",
+            "0.1",
+            "--unknown-test-sample-count",
+            "5",
+            "--known-test-sample-count",
+            "10",
+        ]
+    )
+
+    assert args.unknown_test_sample_ratio == 0.2
+    assert args.known_test_sample_ratio == 0.1
+    assert args.unknown_test_sample_count == 5
+    assert args.known_test_sample_count == 10

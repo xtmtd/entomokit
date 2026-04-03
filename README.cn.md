@@ -445,17 +445,17 @@ output_dir/
 ```bash
 # 比例划分（80/10/10）
 entomokit split-csv --raw-image-csv data/images.csv \
-    --known-test-classes-ratio 0.1 --val-ratio 0.1 --out-dir datasets/
+    --known-test-sample-ratio 0.1 --val-ratio 0.1 --out-dir datasets/
 
 # 数量划分并复制图像
 entomokit split-csv --raw-image-csv data/images.csv --mode count \
-    --known-test-classes-count 100 --val-count 50 \
+    --known-test-sample-count 100 --val-count 50 \
     --copy-images --images-dir images/ --out-dir datasets/
 
 # 带未知类别测试划分（用于开放集评估）
 entomokit split-csv --raw-image-csv data/images.csv \
-    --unknown-test-classes-ratio 0.1 \
-    --known-test-classes-ratio 0.1 \
+    --unknown-test-sample-ratio 0.1 \
+    --known-test-sample-ratio 0.1 \
     --out-dir datasets/
 
 # 过滤样本过少的类别
@@ -470,8 +470,10 @@ entomokit split-csv --raw-image-csv data/images.csv \
 | `--out-dir` | 输出目录 | 必填 |
 | `--mode` | `ratio` 或 `count` | ratio |
 | `--val-ratio` / `--val-count` | 验证集划分 | 无 |
-| `--known-test-classes-ratio` | 已知类别测试比例 | 0.1 |
-| `--unknown-test-classes-ratio` | 未知类别测试比例 | 0 |
+| `--known-test-sample-ratio` | 已知样本测试比例 | 0.1 |
+| `--unknown-test-sample-ratio` | 未知样本测试比例 | 0 |
+| `--known-test-sample-count` | 已知样本测试目标数量（count 模式） | 0 |
+| `--unknown-test-sample-count` | 未知样本测试目标数量（count 模式） | 0 |
 | `--min-count-per-class` | 删除少于该数量的类别 | 0 |
 | `--max-count-per-class` | 每个类别的最大图像数 | 无 |
 | `--copy-images` | 复制图像到划分子目录 | 否 |

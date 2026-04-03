@@ -169,7 +169,7 @@ def test_version_flag_prints_package_version_long(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.1.4"
+    assert out.strip() == "entomokit 0.1.6"
 
 
 def test_version_flag_prints_package_version_short(
@@ -183,4 +183,4 @@ def test_version_flag_prints_package_version_short(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.1.4"
+    assert out.strip() == "entomokit 0.1.6"

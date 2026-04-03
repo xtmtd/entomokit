@@ -17,7 +17,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "Split a CSV dataset (image, label) into train/val/test splits.",
             [
                 "entomokit split-csv --raw-image-csv data.csv --out-dir ./datasets",
-                "entomokit split-csv --raw-image-csv data.csv --mode ratio --known-test-classes-ratio 0.1 --out-dir ./datasets",
+                "entomokit split-csv --raw-image-csv data.csv --mode ratio --known-test-sample-ratio 0.1 --out-dir ./datasets",
             ],
         ),
         formatter_class=RichHelpFormatter,
@@ -32,31 +32,31 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--mode",
         choices=["ratio", "count"],
         default="ratio",
-        help="Split strategy: use class ratios or explicit class counts.",
+        help="Split strategy: use sample ratios or explicit sample counts.",
     )
     p.add_argument(
-        "--unknown-test-classes-ratio",
+        "--unknown-test-sample-ratio",
         type=float,
         default=0.0,
-        help="Fraction of classes reserved for unknown-class test split (ratio mode).",
+        help="Fraction of samples reserved for unknown test split (ratio mode).",
     )
     p.add_argument(
-        "--known-test-classes-ratio",
+        "--known-test-sample-ratio",
         type=float,
         default=0.1,
-        help="Fraction of known classes moved to test split (ratio mode).",
+        help="Fraction of known samples moved to test split (ratio mode).",
     )
     p.add_argument(
-        "--unknown-test-classes-count",
+        "--unknown-test-sample-count",
         type=int,
         default=0,
-        help="Number of classes reserved for unknown-class test split (count mode).",
+        help="Target number of samples reserved for unknown test split (count mode).",
     )
     p.add_argument(
-        "--known-test-classes-count",
+        "--known-test-sample-count",
         type=int,
         default=0,
-        help="Number of known classes moved to test split (count mode).",
+        help="Target number of known samples moved to test split (count mode).",
     )
     p.add_argument(
         "--val-ratio",
@@ -143,10 +143,10 @@ def run(args: argparse.Namespace) -> None:
 
     results = splitter.split(
         mode=args.mode,
-        unknown_test_ratio=args.unknown_test_classes_ratio,
-        known_test_ratio=args.known_test_classes_ratio,
-        unknown_test_count=args.unknown_test_classes_count,
-        known_test_count=args.known_test_classes_count,
+        unknown_test_ratio=args.unknown_test_sample_ratio,
+        known_test_ratio=args.known_test_sample_ratio,
+        unknown_test_count=args.unknown_test_sample_count,
+        known_test_count=args.known_test_sample_count,
         min_count_per_class=args.min_count_per_class,
         max_count_per_class=args.max_count_per_class,
         val_ratio=args.val_ratio,

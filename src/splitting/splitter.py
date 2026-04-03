@@ -42,8 +42,8 @@ class DatasetSplitter:
 
     def split_ratio_mode(
         self,
-        unknown_test_classes_ratio: float = 0.0,
-        known_test_classes_ratio: float = 0.1,
+        unknown_test_sample_ratio: float = 0.0,
+        known_test_sample_ratio: float = 0.1,
         val_ratio: float = 0.0,
     ) -> dict:
         """Split dataset using ratio-based mode."""
@@ -55,8 +55,8 @@ class DatasetSplitter:
         test_known_data = pd.DataFrame()
         train_data = pd.DataFrame()
 
-        if unknown_test_classes_ratio > 0:
-            target_unknown = self.total_samples * unknown_test_classes_ratio
+        if unknown_test_sample_ratio > 0:
+            target_unknown = self.total_samples * unknown_test_sample_ratio
             shuffled_classes = self.class_counts.sample(frac=1, random_state=self.seed)
             accumulated = 0
             unknown_labels = []
@@ -84,7 +84,7 @@ class DatasetSplitter:
         if len(known_data) > 0:
             train_idx = (
                 known_data.groupby("label", group_keys=False)
-                .sample(frac=1 - known_test_classes_ratio, random_state=self.seed)
+                .sample(frac=1 - known_test_sample_ratio, random_state=self.seed)
                 .index
             )
             train_data = known_data.loc[train_idx].reset_index(drop=True)
@@ -129,8 +129,8 @@ class DatasetSplitter:
 
     def split_count_mode(
         self,
-        unknown_test_classes_count: int = 0,
-        known_test_classes_count: int = 0,
+        unknown_test_sample_count: int = 0,
+        known_test_sample_count: int = 0,
         min_count_per_class: int = 0,
         max_count_per_class: Optional[int] = None,
         val_count: int = 0,
@@ -146,8 +146,8 @@ class DatasetSplitter:
         test_known_data = pd.DataFrame()
         train_data = pd.DataFrame()
 
-        if unknown_test_classes_count > 0:
-            target_unknown = unknown_test_classes_count
+        if unknown_test_sample_count > 0:
+            target_unknown = unknown_test_sample_count
             shuffled_classes = self.class_counts.sample(frac=1, random_state=self.seed)
             accumulated = 0
             unknown_labels = []
@@ -166,8 +166,8 @@ class DatasetSplitter:
                 self.class_count_dir / "class.test.unknown.count", index=False
             )
 
-        if known_test_classes_count > 0:
-            target_known = known_test_classes_count
+        if known_test_sample_count > 0:
+            target_known = known_test_sample_count
             known_test_samples = []
             accumulated = 0
 
@@ -217,11 +217,13 @@ class DatasetSplitter:
         val_data = pd.DataFrame()
         if val_count > 0 and len(train_data) > 0:
             val_rows = []
+            val_indices = []
             accumulated = 0
             for lbl, group in train_data.groupby("label"):
                 group = group.sample(frac=1, random_state=self.seed)
                 for idx, row in group.iterrows():
                     val_rows.append(row)
+                    val_indices.append(idx)
                     accumulated += 1
                     if accumulated >= val_count:
                         break
@@ -229,9 +231,9 @@ class DatasetSplitter:
                     break
             if val_rows:
                 val_data = pd.DataFrame(val_rows).reset_index(drop=True)
-                train_data = train_data.drop(
-                    val_data.index, errors="ignore"
-                ).reset_index(drop=True)
+                train_data = train_data.drop(val_indices, errors="ignore").reset_index(
+                    drop=True
+                )
                 train_data.to_csv(self.out_dir / "train.csv", index=False)
                 train_data.label.value_counts().to_csv(
                     self.class_count_dir / "class.train.count", index=False
@@ -305,14 +307,14 @@ class DatasetSplitter:
 
         if mode == "ratio":
             results = self.split_ratio_mode(
-                unknown_test_classes_ratio=unknown_test_ratio,
-                known_test_classes_ratio=known_test_ratio,
+                unknown_test_sample_ratio=unknown_test_ratio,
+                known_test_sample_ratio=known_test_ratio,
                 val_ratio=val_ratio,
             )
         elif mode == "count":
             results = self.split_count_mode(
-                unknown_test_classes_count=unknown_test_count,
-                known_test_classes_count=known_test_count,
+                unknown_test_sample_count=unknown_test_count,
+                known_test_sample_count=known_test_count,
                 min_count_per_class=min_count_per_class,
                 max_count_per_class=max_count_per_class,
                 val_count=val_count,

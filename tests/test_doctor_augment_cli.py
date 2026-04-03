@@ -24,6 +24,29 @@ def test_augment_parser_supports_input_output_and_multiply() -> None:
     assert args.multiply == 3
 
 
+def test_augment_parser_rejects_preset_and_policy_together() -> None:
+    import pytest
+
+    from entomokit.main import _build_parser
+
+    parser = _build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "augment",
+                "--input-dir",
+                "images",
+                "--out-dir",
+                "augmented",
+                "--preset",
+                "light",
+                "--policy",
+                "policy.json",
+            ]
+        )
+
+
 def test_doctor_command_is_registered() -> None:
     from entomokit.main import _build_parser
 

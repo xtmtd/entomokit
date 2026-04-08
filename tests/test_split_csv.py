@@ -151,3 +151,15 @@ def test_split_csv_parser_uses_sample_based_argument_names() -> None:
     assert args.known_test_sample_ratio == 0.1
     assert args.unknown_test_sample_count == 5
     assert args.known_test_sample_count == 10
+
+
+def test_class_count_outputs_keep_label_and_count_columns(tmp_path, sample_csv):
+    csv_path, _ = sample_csv
+    out_dir = tmp_path / "out"
+    splitter = DatasetSplitter(str(csv_path), str(out_dir), seed=42)
+
+    splitter.split(mode="ratio", known_test_ratio=0.1, val_ratio=0.1)
+
+    for name in ["class.train.count", "class.test.known.count", "class.val.count"]:
+        count_df = pd.read_csv(out_dir / "class_count" / name)
+        assert list(count_df.columns) == ["label", "count"]

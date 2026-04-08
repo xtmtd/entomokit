@@ -24,6 +24,13 @@ class DatasetSplitter:
         self.class_counts: Optional[pd.DataFrame] = None
         self.total_samples = 0
 
+    def _write_class_count(self, data: pd.DataFrame, filename: str) -> None:
+        """Write class count CSV with explicit label/count columns."""
+        counts = (
+            data["label"].value_counts().rename_axis("label").reset_index(name="count")
+        )
+        counts.to_csv(self.class_count_dir / filename, index=False)
+
     def load_data(self) -> None:
         """Load and validate input CSV."""
         if not os.path.exists(self.raw_image_csv):
@@ -36,7 +43,7 @@ class DatasetSplitter:
         class_counts.columns = ["label", "count"]
         self.class_counts = class_counts
 
-        class_counts.to_csv(self.class_count_dir / "class.count", index=False)
+        self._write_class_count(self.all_data, "class.count")
 
         print(f"Loaded {self.total_samples} samples, {len(class_counts)} classes.")
 
@@ -75,9 +82,7 @@ class DatasetSplitter:
             ].reset_index(drop=True)
 
             test_unknown_data.to_csv(self.out_dir / "test.unknown.csv", index=False)
-            test_unknown_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.test.unknown.count", index=False
-            )
+            self._write_class_count(test_unknown_data, "class.test.unknown.count")
         else:
             print("Skip unknown ratio split, ratio=0")
 
@@ -93,12 +98,8 @@ class DatasetSplitter:
             train_data.to_csv(self.out_dir / "train.csv", index=False)
             test_known_data.to_csv(self.out_dir / "test.known.csv", index=False)
 
-            train_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.train.count", index=False
-            )
-            test_known_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.test.known.count", index=False
-            )
+            self._write_class_count(train_data, "class.train.count")
+            self._write_class_count(test_known_data, "class.test.known.count")
         else:
             print("No known data after unknown split.")
 
@@ -112,13 +113,9 @@ class DatasetSplitter:
             val_data = train_data.loc[val_idx].reset_index(drop=True)
             train_data = train_data.drop(val_idx).reset_index(drop=True)
             train_data.to_csv(self.out_dir / "train.csv", index=False)
-            train_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.train.count", index=False
-            )
+            self._write_class_count(train_data, "class.train.count")
             val_data.to_csv(self.out_dir / "val.csv", index=False)
-            val_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.val.count", index=False
-            )
+            self._write_class_count(val_data, "class.val.count")
 
         return {
             "test_unknown": len(test_unknown_data),
@@ -162,9 +159,7 @@ class DatasetSplitter:
             df = df[~df.label.isin(unknown_labels)].reset_index(drop=True)
 
             test_unknown_data.to_csv(self.out_dir / "test.unknown.csv", index=False)
-            test_unknown_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.test.unknown.count", index=False
-            )
+            self._write_class_count(test_unknown_data, "class.test.unknown.count")
 
         if known_test_sample_count > 0:
             target_known = known_test_sample_count
@@ -191,9 +186,7 @@ class DatasetSplitter:
 
         if len(test_known_data) > 0:
             test_known_data.to_csv(self.out_dir / "test.known.csv", index=False)
-            test_known_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.test.known.count", index=False
-            )
+            self._write_class_count(test_known_data, "class.test.known.count")
 
         train_rows = []
         for lbl, group in remain_df.groupby("label"):
@@ -210,9 +203,7 @@ class DatasetSplitter:
         if len(train_rows) > 0:
             train_data = pd.concat(train_rows).reset_index(drop=True)
             train_data.to_csv(self.out_dir / "train.csv", index=False)
-            train_data.label.value_counts().to_csv(
-                self.class_count_dir / "class.train.count", index=False
-            )
+            self._write_class_count(train_data, "class.train.count")
 
         val_data = pd.DataFrame()
         if val_count > 0 and len(train_data) > 0:
@@ -235,13 +226,9 @@ class DatasetSplitter:
                     drop=True
                 )
                 train_data.to_csv(self.out_dir / "train.csv", index=False)
-                train_data.label.value_counts().to_csv(
-                    self.class_count_dir / "class.train.count", index=False
-                )
+                self._write_class_count(train_data, "class.train.count")
                 val_data.to_csv(self.out_dir / "val.csv", index=False)
-                val_data.label.value_counts().to_csv(
-                    self.class_count_dir / "class.val.count", index=False
-                )
+                self._write_class_count(val_data, "class.val.count")
 
         return {
             "test_unknown": len(test_unknown_data),

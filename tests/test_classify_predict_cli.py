@@ -134,3 +134,56 @@ def test_predict_run_writes_missing_images_log(tmp_path: Path, monkeypatch) -> N
     missing_log = out_dir / "logs" / "missing_images.txt"
     assert missing_log.exists()
     assert missing_log.read_text(encoding="utf-8").splitlines() == ["missing.jpg"]
+
+
+def test_predict_run_onnx_enables_progress_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from entomokit.classify import predict as predict_cli
+
+    out_dir = tmp_path / "out"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+
+    monkeypatch.setattr("src.common.cli.save_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "src.classification.utils.select_device",
+        lambda _device: type("Dev", (), {"type": "cpu"})(),
+    )
+
+    df = pd.DataFrame({"image": ["a.jpg"]})
+    monkeypatch.setattr(
+        "entomokit.classify.predict._resolve_predict_inputs",
+        lambda **_kwargs: (df, images_dir),
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_predict_onnx(*_args, **kwargs):
+        captured.update(kwargs)
+        return pd.DataFrame(
+            {
+                "image": ["a.jpg"],
+                "prediction": [0],
+                "proba_0": [1.0],
+            }
+        )
+
+    monkeypatch.setattr("src.classification.predictor.predict_onnx", fake_predict_onnx)
+
+    args = argparse.Namespace(
+        input_csv=None,
+        images_dir=str(images_dir),
+        model_dir=None,
+        onnx_model=str(tmp_path / "model.onnx"),
+        out_dir=str(out_dir),
+        batch_size=32,
+        num_workers=4,
+        num_threads=0,
+        device="auto",
+    )
+
+    predict_cli.run(args)
+
+    assert captured["show_progress"] is True

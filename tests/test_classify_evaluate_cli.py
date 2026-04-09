@@ -125,3 +125,41 @@ def test_evaluate_onnx_maps_string_labels_using_sidecar(
     )
 
     assert metrics["accuracy"] == 1.0
+
+
+def test_evaluate_onnx_enables_progress_by_default(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from src.classification.evaluator import evaluate_onnx
+
+    test_csv = tmp_path / "test.csv"
+    pd.DataFrame({"image": ["a.jpg"], "label": ["cls_a"]}).to_csv(test_csv, index=False)
+
+    onnx_path = tmp_path / "model.onnx"
+    onnx_path.write_bytes(b"onnx")
+
+    captured: dict[str, object] = {}
+
+    def fake_predict_onnx(*_args, **kwargs):
+        captured.update(kwargs)
+        return pd.DataFrame(
+            {
+                "image": ["a.jpg"],
+                "prediction": ["cls_a"],
+                "prediction_index": [0],
+                "proba_0": [1.0],
+            }
+        )
+
+    monkeypatch.setattr("src.classification.predictor.predict_onnx", fake_predict_onnx)
+
+    evaluate_onnx(
+        test_csv=test_csv,
+        images_dir=tmp_path,
+        onnx_path=onnx_path,
+        batch_size=1,
+        num_threads=0,
+    )
+
+    assert captured["show_progress"] is True

@@ -133,7 +133,14 @@ def evaluate_onnx(
     from src.classification.predictor import predict_onnx, load_onnx_class_labels
 
     df = pd.read_csv(test_csv)
-    result = predict_onnx(df, images_dir, onnx_path, batch_size, num_threads)
+    result = predict_onnx(
+        df,
+        images_dir,
+        onnx_path,
+        batch_size,
+        num_threads,
+        show_progress=True,
+    )
 
     labels = df["label"].values
     predictions = result["prediction"].values

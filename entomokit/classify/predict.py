@@ -183,6 +183,7 @@ def run(args: argparse.Namespace) -> None:
             onnx_path=Path(args.onnx_model),
             batch_size=args.batch_size,
             num_threads=args.num_threads,
+            show_progress=True,
         )
 
     out_csv = pred_dir / "predictions.csv"

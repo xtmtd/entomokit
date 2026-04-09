@@ -9,6 +9,13 @@ import json
 
 import pandas as pd
 
+try:
+    from tqdm.auto import tqdm
+except Exception:
+
+    def tqdm(iterable, **_kwargs):
+        return iterable
+
 
 def load_onnx_class_labels(onnx_path: Path) -> list[str] | None:
     meta_path = Path(onnx_path).parent / "label_classes.json"
@@ -64,6 +71,7 @@ def predict_onnx(
     onnx_path: Path,
     batch_size: int,
     num_threads: int,
+    show_progress: bool = True,
 ) -> pd.DataFrame:
     """Run inference with ONNX model.
     Returns DataFrame with columns: image, prediction, proba_*.
@@ -109,7 +117,11 @@ def predict_onnx(
     all_proba = []
 
     paths = input_df["image"].tolist()
-    for i in range(0, len(paths), batch_size):
+    batch_starts = range(0, len(paths), batch_size)
+    if show_progress:
+        batch_starts = tqdm(batch_starts, desc="ONNX infer", unit="batch")
+
+    for i in batch_starts:
         batch_paths = paths[i : i + batch_size]
         tensors = []
         for p in batch_paths:

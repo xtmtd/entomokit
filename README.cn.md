@@ -2,7 +2,7 @@
 
 **中文** | [English](README.md)
 
-一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
+一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、形态学测量、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
 
 ## 概述
 
@@ -16,6 +16,7 @@ entomokit <command> [options]
 |---------|-------------|
 | `extract-frames` | 从视频文件中提取帧 |
 | `segment` | 从图像中分割昆虫（SAM3、Otsu、GrabCut 与 bbox 裁剪模式） |
+| `measure` | 从分割掩码中计算形态学指标 |
 | `synthesize` | 将昆虫合成到背景图像上 |
 | `clean` | 清洗和去重图像 |
 | `augment` | 使用预设或自定义 albumentations 策略进行图像增强 |
@@ -32,6 +33,7 @@ entomokit <command> [options]
 
 - **统一命令行接口**：单一 `entomokit` 入口，无需逐脚本调用
 - **多种分割方法**：`sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox`
+- **形态学测量**：`measure` 可从掩码图计算面积、体长、体宽、周长、Feret 直径与质量告警
 - **灵活的修复策略**：OpenCV 形态学操作、基于 SAM3 或 LaMa 的孔洞填充
 - **标注输出**：COCO JSON、VOC Pascal XML、YOLO TXT
 - **视频抽帧**：多线程提取，支持时间范围设定
@@ -161,6 +163,7 @@ pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 │   ├── main.py             # 入口点调度器
 │   ├── extract_frames.py   # entomokit extract-frames
 │   ├── segment.py          # entomokit segment
+│   ├── measure.py          # entomokit measure
 │   ├── synthesize.py       # entomokit synthesize
 │   ├── clean.py            # entomokit clean
 │   ├── augment.py          # entomokit augment
@@ -182,6 +185,7 @@ pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 │   ├── cleaning/           # 图像清洗领域逻辑
 │   ├── augment/            # 图像增强领域逻辑
 │   ├── splitting/          # 数据集划分领域逻辑
+│   ├── measurement/        # 形态学测量逻辑
 │   ├── synthesis/          # 图像合成领域逻辑
 │   ├── doctor/             # 环境诊断
 │   ├── sam3/               # SAM3 模型实现
@@ -231,11 +235,12 @@ models/big-lama/
 
 1. `extract-frames`
 2. `segment`
-3. `synthesize`
-4. `clean`
-5. `augment`
-6. `split-csv`
-7. `classify`
+3. `measure`（可选，基于分割掩码）
+4. `synthesize`
+5. `clean`
+6. `augment`
+7. `split-csv`
+8. `classify`
 
 ### segment 命令
 
@@ -340,6 +345,46 @@ output_dir/
 **标注字段说明**：
 - `area` 在非 `*-bbox` 方法下为**掩码像素面积**（`np.sum(mask > 0)`），在 `*-bbox` 方法下为**边界框面积**（`w × h`）。
 - `segmentation` 在非 `*-bbox` 方法下为 polygon 坐标数组（`[x1,y1,x2,y2,...]`），在 `*-bbox` 方法下为空。
+
+---
+
+### measure 命令
+
+从分割掩码批量计算形态学指标。指标定义与 scikit-image `regionprops` 口径对齐，便于结果复现与跨工具对比。
+
+```bash
+# 基础测量并导出 CSV 报告
+entomokit measure \
+    --mask-dir data/segment/images \
+    --out-dir runs/measure
+
+# 带比例尺（微米每像素）
+entomokit measure \
+    --mask-dir data/segment/images \
+    --out-dir runs/measure \
+    --pixel-size-um 2.5
+```
+
+| 参数 | 描述 | 默认值 |
+|-----------|-------------|---------|
+| `--mask-dir`, `-i` | 输入掩码目录 | 必填 |
+| `--out-dir`, `-o` | 输出目录 | 必填 |
+| `--pixel-size-um` | 像素尺寸（`um/px`，微米每像素） | 无 |
+| `--threads`, `-n` | 预留并行线程数（当前用于参数兼容） | 8 |
+| `--verbose`, `-v` | 启用详细日志 | 否 |
+
+**输出文件：**
+```
+output_dir/
+├── metrics.csv              # 每张图的指标与告警原因
+├── metrics_summary.csv      # 汇总统计与按原因聚合的告警计数
+└── metric_definitions.csv   # 指标说明（中英文字段 + 单位/公式）
+```
+
+**关于体长/体宽的谨慎说明：**
+- `body_length_*` 与 `body_width_*` 是基于二值掩码几何形态的估计值，不等同于严格解剖学实测值。
+- 当掩码包含附肢（触角/足）、目标被图像边界截断、或虫体区域粘连/破碎时，体长与体宽可能产生偏差。
+- 下游分析前请结合 `quality_flag` 与 `warn_reason`（如 `touching_border`、`too_many_branches`）进行人工复核。
 
 ---
 

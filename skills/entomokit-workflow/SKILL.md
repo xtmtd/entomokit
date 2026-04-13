@@ -1,6 +1,6 @@
 ---
 name: entomokit-workflow
-description: Conversational workflow orchestrator for EntomoKit from dataset preparation to model training/evaluation/export. Use when users ask to run, plan, troubleshoot, or learn entomokit commands (doctor, clean, segment, synthesize, augment, split-csv, classify), especially for step-by-step guidance, CSV validation, teaching demos, and safe parameter confirmation.
+description: Conversational workflow orchestrator for EntomoKit from dataset preparation to model training/evaluation/export. Use when users ask to run, plan, troubleshoot, or learn entomokit commands (doctor, clean, segment, measure, synthesize, augment, split-csv, classify), especially for step-by-step guidance, CSV validation, morphology measurement, teaching demos, and safe parameter confirmation.
 ---
 
 # EntomoKit Workflow
@@ -18,7 +18,7 @@ Run the workflow in phases. Keep user data as first priority.
    - wait for user confirmation or parameter edits.
 3. After each command result, summarize outputs first, then wait for user approval before any next-step command.
 4. When presenting next-step suggestions, do not auto-run anything. Require explicit user selection and approval.
-5. In guided mode, treat `clean` as the gate before segment/synthesize/augment/split/train.
+5. In guided mode, treat `clean` as the gate before segment/measure/synthesize/augment/split/train.
 6. Validate CSV (`image,label`) and label-source rules before `split-csv`.
 7. Never write outputs directly into repository `data/` or mixed root paths.
 8. Create a dedicated run root under the working directory with name `runNNN` (for example `runs/run001/`) and place all command outputs inside it.
@@ -31,8 +31,11 @@ Run the workflow in phases. Keep user data as first priority.
    - block custom Python scripts unless user explicitly approves fallback and reason is recorded.
    - when fallback is approved, pass explicit `fallback_reason` to execution gate.
 12. Segment backend guardrail:
-   - supported `--segmentation-method` values are `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
-   - if user asks for unsupported values, mark unsupported and recommend nearest supported method.
+    - supported `--segmentation-method` values are `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
+    - if user asks for unsupported values, mark unsupported and recommend nearest supported method.
+13. Measure interpretation guardrail:
+    - remind users that `body_length`/`body_width` are mask-geometry estimates, not strict anatomical measurements.
+    - highlight higher uncertainty when masks include appendages, touch borders, or are merged/fragmented.
 
 ## Parameter Source-of-Truth Protocol
 
@@ -113,7 +116,7 @@ Short template:
 ## Phases
 
 - Phase 0: `doctor`
-- Phase 1: `extract-frames` (optional) -> `clean` (required gate) -> `segment`/`synthesize`/`augment` (optional)
+- Phase 1: `extract-frames` (optional) -> `clean` (required gate) -> `segment`/`measure`/`synthesize`/`augment` (optional)
 - Phase 2: CSV teaching + CSV validation + `split-csv`
 - Phase 3: `classify train` -> `predict` -> `evaluate` -> `embed`/`cam` -> `export-onnx`
 

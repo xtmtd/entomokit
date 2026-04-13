@@ -9,6 +9,7 @@ def test_build_command_schemas_includes_leaf_commands() -> None:
     schemas = build_command_schemas()
 
     assert "clean" in schemas
+    assert "measure" in schemas
     assert "classify train" in schemas
     assert "classify" not in schemas
 

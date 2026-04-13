@@ -2,7 +2,7 @@
 
 [中文文档](README.cn.md) | **English**
 
-A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
+A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, morphology measurement, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
 
 ## Overview
 
@@ -16,6 +16,7 @@ entomokit <command> [options]
 |---------|-------------|
 | `extract-frames` | Extract frames from video files |
 | `segment` | Segment insects from images (SAM3, Otsu, GrabCut, bbox crop modes) |
+| `measure` | Measure morphology metrics from segmentation masks |
 | `synthesize` | Composite insects onto background images |
 | `clean` | Clean and deduplicate images |
 | `augment` | Augment images with presets or custom albumentations policy |
@@ -32,6 +33,7 @@ entomokit <command> [options]
 
 - **Unified CLI**: Single `entomokit` entry point — no more per-script invocations
 - **Multiple Segmentation Methods**: `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`
+- **Morphology Measurement**: `measure` computes area, length, width, perimeter, Feret diameters, and quality flags from mask images
 - **Flexible Repair Strategies**: OpenCV morphological operations, SAM3-based or LaMa hole filling
 - **Annotation Output**: COCO JSON, VOC Pascal XML, YOLO TXT
 - **Video Frame Extraction**: Multithreaded extraction with time range support
@@ -160,6 +162,7 @@ pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 ├── entomokit/              # Unified CLI package
 │   ├── main.py             # Entry point dispatcher
 │   ├── segment.py          # entomokit segment
+│   ├── measure.py          # entomokit measure
 │   ├── extract_frames.py   # entomokit extract-frames
 │   ├── synthesize.py       # entomokit synthesize
 │   ├── clean.py            # entomokit clean
@@ -182,6 +185,7 @@ pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 │   ├── cleaning/           # Image cleaning domain logic
 │   ├── augment/            # Image augmentation domain logic
 │   ├── splitting/          # Dataset splitting domain logic
+│   ├── measurement/        # Morphology measurement logic
 │   ├── synthesis/          # Image synthesis domain logic
 │   ├── doctor/             # Environment diagnostics
 │   ├── sam3/               # SAM3 model implementation
@@ -231,11 +235,12 @@ Recommended workflow command order:
 
 1. `extract-frames`
 2. `segment`
-3. `synthesize`
-4. `clean`
-5. `augment`
-6. `split-csv`
-7. `classify`
+3. `measure` (optional, from segmentation masks)
+4. `synthesize`
+5. `clean`
+6. `augment`
+7. `split-csv`
+8. `classify`
 
 ### Segment Command
 
@@ -329,6 +334,46 @@ output_dir/
 ├── labels/                   # YOLO: .txt per image + data.yaml
 └── Annotations/              # VOC: .xml per image + ImageSets/Main/
 ```
+
+---
+
+### Measure Command
+
+Measure morphology metrics from segmentation masks. The implementation aligns metric definitions with scikit-image `regionprops` to keep results consistent.
+
+```bash
+# Measure mask directory and export CSV reports
+entomokit measure \
+    --mask-dir data/segment/images \
+    --out-dir runs/measure
+
+# With calibrated scale (micrometers per pixel)
+entomokit measure \
+    --mask-dir data/segment/images \
+    --out-dir runs/measure \
+    --pixel-size-um 2.5
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--mask-dir`, `-i` | Input mask directory | Required |
+| `--out-dir`, `-o` | Output directory | Required |
+| `--pixel-size-um` | Pixel size in micrometers per pixel (`um/px`) | None |
+| `--threads`, `-n` | Reserved worker count for future parallel processing | 8 |
+| `--verbose`, `-v` | Enable verbose logging | No |
+
+**Outputs:**
+```
+output_dir/
+├── metrics.csv              # Per-image metrics and warning reasons
+├── metrics_summary.csv      # Aggregated statistics + warning counts
+└── metric_definitions.csv   # Metric definitions (zh/en + units/formulas)
+```
+
+**Caution on body length/width:**
+- `body_length_*` and `body_width_*` are geometry-based estimates from binary masks, not direct anatomical measurements.
+- They can be biased when masks include appendages (antennae/legs), are clipped by image borders, or contain merged/fragmented body regions.
+- Always check `quality_flag` and `warn_reason` (for example `touching_border`, `too_many_branches`) before downstream analysis.
 
 ---
 

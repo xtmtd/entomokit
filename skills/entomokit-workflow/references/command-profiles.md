@@ -32,6 +32,18 @@
 - For faster RGB crop output without alpha mask, recommend `otsu-bbox` or `grabcut-bbox`.
 - If user requests unsupported methods, mark unsupported and recommend nearest supported method.
 
+## measure
+
+- Use for morphology metrics from segmentation masks.
+- Required params: `--mask-dir`, `--out-dir`.
+- Optional scale: `--pixel-size-um` with unit `um/px` (micrometers per pixel).
+- Keep `--threads` visible in card (default `8`; reserved for parallel processing compatibility).
+- Explicitly remind users that `body_length`/`body_width` are mask-geometry estimates and may be biased by appendages, border clipping, or merged/fragmented masks.
+- After run, always summarize:
+  - `metrics.csv` (per-image metrics + warn reasons),
+  - `metrics_summary.csv` (aggregate stats + warn counters),
+  - `metric_definitions.csv` (metric glossary, units, formulas).
+
 ## split-csv
 
 - Input must contain `image,label` columns.

@@ -12,6 +12,7 @@ DATA_ROOT="$(python skills/entomokit-workflow/scripts/resolve_data_dir.py)"
 
 - `$DATA_ROOT/video.mp4` -> extract-frames demo
 - `$DATA_ROOT/insects/` -> small clean/segment/predict demo
+- `$DATA_ROOT/segment/images/` -> measure demo on segmentation masks
 - `$DATA_ROOT/Epidorcus/figs.csv` + `$DATA_ROOT/Epidorcus/images/` -> split + train demo
 - `$DATA_ROOT/segment/annotations.coco.json` -> segmentation output structure demo
 
@@ -35,6 +36,9 @@ entomokit extract-frames --input-dir "$DATA_ROOT/video.mp4" --out-dir out/demo_f
 
 # clean
 entomokit clean --input-dir "$DATA_ROOT/insects/" --out-dir out/demo_clean/
+
+# measure
+entomokit measure --mask-dir "$DATA_ROOT/segment/images/" --out-dir out/demo_measure/ --pixel-size-um 1.0
 
 # split-csv
 entomokit split-csv --raw-image-csv "$DATA_ROOT/Epidorcus/figs.csv" --images-dir "$DATA_ROOT/Epidorcus/images/" --out-dir out/demo_split/

@@ -61,13 +61,20 @@ Recommended pre-run chain (must stay in order):
 
 1. Optional `extract-frames` when source is video.
 2. Mandatory `clean` in guided mode.
-3. Optional `segment`, `synthesize`, `augment` based on user goals.
+3. Optional `segment`, `measure`, `synthesize`, `augment` based on user goals.
 4. Before `clean`, if nested class folders exist, confirm whether to use `--recursive`.
 
 Segment method note:
 
 - Current supported values: `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
 - If user requests unsupported values, treat as unsupported, explain clearly, and propose nearest supported alternatives.
+
+Measure note:
+
+- `measure` expects segmentation masks from `--mask-dir` and writes CSV reports into `--out-dir`.
+- If physical scale is known, confirm `--pixel-size-um` (`um/px`) before run.
+- Before and after `measure`, remind user that body length/width are estimates from mask geometry and can deviate when appendages dominate, masks touch borders, or foreground is broken/merged.
+- Always report `metrics.csv`, `metrics_summary.csv`, and `metric_definitions.csv` paths after completion.
 
 ## Phase 2 - Split Preparation
 

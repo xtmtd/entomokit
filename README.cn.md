@@ -330,6 +330,17 @@ output_dir/
 └── Annotations/              # VOC：每张图一个 .xml + ImageSets/Main/
 ```
 
+**VOC 分割标注额外目录**（非 `*-bbox` 方法时）：
+```
+output_dir/
+├── Annotations/              # VOC XML（包含 bndbox）
+└── SegmentationClass/        # 分割 mask PNG（前景=255，背景=0）
+```
+
+**标注字段说明**：
+- `area` 在非 `*-bbox` 方法下为**掩码像素面积**（`np.sum(mask > 0)`），在 `*-bbox` 方法下为**边界框面积**（`w × h`）。
+- `segmentation` 在非 `*-bbox` 方法下为 polygon 坐标数组（`[x1,y1,x2,y2,...]`），在 `*-bbox` 方法下为空。
+
 ---
 
 ### extract-frames 命令

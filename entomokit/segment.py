@@ -31,7 +31,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--segmentation-method",
         default="sam3",
         choices=["sam3", "sam3-bbox", "otsu", "otsu-bbox", "grabcut", "grabcut-bbox"],
-        help="Segmentation method.",
+        help=(
+            "Segmentation method. Methods ending with '-bbox' output bbox-only annotations; "
+            "other methods output both bbox and segmentation annotations."
+        ),
     )
     p.add_argument(
         "--sam3-checkpoint",
@@ -98,7 +101,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--annotation-format",
         default=None,
         choices=["coco", "voc", "yolo"],
-        help="Annotation output format. None = no annotations.",
+        help=(
+            "Annotation output format. None = no annotations. Format controls file encoding only; "
+            "annotation granularity follows --segmentation-method (VOC segmentation is stored as mask PNG files)."
+        ),
     )
     p.add_argument(
         "--coco-output-mode",

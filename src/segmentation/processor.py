@@ -127,7 +127,9 @@ class SegmentationProcessor:
         min_area = max(25.0, image_area * 0.001)
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        cleaned = cv2.erode(cv2.dilate(binary_image, kernel, iterations=2), kernel, iterations=2)
+        cleaned = cv2.erode(
+            cv2.dilate(binary_image, kernel, iterations=2), kernel, iterations=2
+        )
 
         contours, _ = cv2.findContours(
             cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
@@ -303,6 +305,7 @@ class SegmentationProcessor:
             "grabcut-bbox",
             "bbox",
         ]
+        include_segmentation_annotations = not is_bbox_mode
 
         # Run segmentation based on method
         if self.segmentation_method in ["otsu", "otsu-bbox"]:
@@ -361,6 +364,7 @@ class SegmentationProcessor:
         voc_yolo_annotations = []
         voc_yolo_manager: Optional[COCOMetadataManager] = None
         voc_yolo_category_id: Optional[int] = None
+        voc_yolo_segmentations: List[Optional[List[float]]] = []
         if self.annotation_format in ["voc", "yolo"]:
             voc_yolo_manager = COCOMetadataManager()
             voc_yolo_category_id = voc_yolo_manager.add_category("insect")
@@ -471,6 +475,10 @@ class SegmentationProcessor:
 
             # Mask area is the actual object pixel count
             mask_area = int(np.sum(mask > 0))
+            bbox_area = int(orig_bbox[2] * orig_bbox[3])
+            annotation_area = (
+                mask_area if include_segmentation_annotations else bbox_area
+            )
 
             results["masks"].append(mask)
             results["output_files"].append(str(output_path))
@@ -484,8 +492,10 @@ class SegmentationProcessor:
                     image_id=coco_separate_manager._image_id_counter,
                     category_id=coco_separate_category_id,
                     bbox=list(orig_bbox),
-                    segmentation=polygon_orig,
-                    area=mask_area,
+                    segmentation=polygon_orig
+                    if include_segmentation_annotations
+                    else None,
+                    area=annotation_area,
                 )
 
             # VOC/YOLO mode: accumulate annotations for this input image
@@ -494,9 +504,19 @@ class SegmentationProcessor:
                     image_id=1,
                     category_id=voc_yolo_category_id,
                     bbox=list(orig_bbox),
-                    segmentation=polygon_orig,
-                    area=mask_area,
+                    segmentation=polygon_orig
+                    if include_segmentation_annotations
+                    else None,
+                    area=annotation_area,
                 )
+                if (
+                    include_segmentation_annotations
+                    and polygon_orig
+                    and len(polygon_orig) > 0
+                ):
+                    voc_yolo_segmentations.append(polygon_orig[0])
+                else:
+                    voc_yolo_segmentations.append(None)
 
         if self.annotation_format == "coco" and self.coco_output_mode == "separate":
             annotations_dir = self._get_annotation_output_dir(output_dir)
@@ -528,9 +548,24 @@ class SegmentationProcessor:
                 imagesets_dir.mkdir(parents=True, exist_ok=True)
                 with open(imagesets_dir / "default.txt", "a") as f:
                     f.write(f"{base_name}\n")
+                if include_segmentation_annotations:
+                    logger.info(
+                        "VOC segmentation is saved as mask PNG in SegmentationClass/; XML contains bbox only."
+                    )
+                    seg_dir = output_dir / "SegmentationClass"
+                    seg_dir.mkdir(parents=True, exist_ok=True)
+                    seg_mask = np.zeros((orig_height, orig_width), dtype=np.uint8)
+                    for mask in filtered_masks:
+                        seg_mask[mask > 0] = 255
+                    seg_path = seg_dir / f"{base_name}.png"
+                    cv2.imwrite(str(seg_path), seg_mask)
             elif self.annotation_format == "yolo":
                 yolo_content = voc_yolo_manager.to_yolo_txt(
-                    width=orig_width, height=orig_height, segmentation=None
+                    width=orig_width,
+                    height=orig_height,
+                    segmentation=voc_yolo_segmentations
+                    if include_segmentation_annotations
+                    else None,
                 )
                 # YOLO: labels/ dir (detcli-aligned)
                 labels_path = annotations_dir / f"{base_name}.txt"
@@ -555,8 +590,11 @@ class SegmentationProcessor:
             # Add an annotation for each mask
             for mask in filtered_masks:
                 mb = mask_to_bbox(mask)
-                mp = mask_to_polygon(mask)
-                ma = int(np.sum(mask > 0))
+                mp = mask_to_polygon(mask) if include_segmentation_annotations else None
+                if include_segmentation_annotations:
+                    ma = int(np.sum(mask > 0))
+                else:
+                    ma = int(mb[2] * mb[3])
                 self.metadata_manager.add_annotation(
                     image_id=image_id,
                     category_id=self.insect_category_id,
@@ -564,27 +602,6 @@ class SegmentationProcessor:
                     segmentation=mp,
                     area=ma,
                 )
-
-        # COCO mode: accumulate detections for write_annotations() in process_directory()
-        # Using sv.Detections with xyxy boxes for annotation_writer compatibility
-        if (
-            self.annotation_format == "coco"
-            and original_path
-            and len(filtered_masks) > 0
-        ):
-            import supervision as sv
-
-            xyxy_list = []
-            for mask in filtered_masks:
-                x, y, w, h = mask_to_bbox(mask)
-                xyxy_list.append([x, y, x + w, y + h])
-            xyxy = np.array(xyxy_list, dtype=np.float32)
-            class_ids = np.zeros(len(filtered_masks), dtype=int)
-            dets = sv.Detections(xyxy=xyxy, class_id=class_ids)
-
-            img_path = Path(original_path)
-            self._ann_image_paths.append(img_path)
-            self._ann_detections[str(img_path)] = dets
 
         # Apply combined repair if enabled (after processing all masks)
         if repair_image is not None and all_masks_for_repair:
@@ -705,7 +722,9 @@ class SegmentationProcessor:
             else:
                 repaired = base_repaired
         except Exception:
-            logger.exception("SAM3-fill enhancement failed; falling back to OpenCV inpaint")
+            logger.exception(
+                "SAM3-fill enhancement failed; falling back to OpenCV inpaint"
+            )
             # Fallback to OpenCV repair if SAM3 fails
             repaired = base_repaired
 
@@ -1040,29 +1059,14 @@ class SegmentationProcessor:
                 logger.exception(f"Failed to process {img_path}")
                 results["failed"] += 1
 
-        # Save metadata for COCO mode — write as annotations.coco.json (detcli-aligned)
-        if self.annotation_format == "coco" and self._ann_image_paths:
-            from src.common.annotation_writer import write_annotations
-
-            write_annotations(
-                image_paths=self._ann_image_paths,
-                detections_per_image=self._ann_detections,
-                class_names=["insect"],
-                out_dir=output_dir,
-                fmt="coco",
-                coco_bbox_format=self.coco_bbox_format,
-            )
-            logger.info(
-                f"Saved COCO annotations to {output_dir / 'annotations.coco.json'}"
-            )
-            self._ann_image_paths = []
-            self._ann_detections = {}
-        elif self.annotation_format == "coco":
-            # Legacy fallback: save via metadata_manager when no accumulation happened
-            annotations_dir = output_dir / "annotations"
-            annotations_dir.mkdir(parents=True, exist_ok=True)
-            metadata_path = annotations_dir / "annotations.json"
+        # Save metadata for COCO mode (unified) — keep segmentation/area fidelity
+        if self.annotation_format == "coco" and self.coco_output_mode == "unified":
+            metadata_path = output_dir / "annotations.coco.json"
             self.metadata_manager.save(metadata_path)
-            logger.info(f"Saved metadata to {metadata_path}")
+            if self.coco_bbox_format == "xyxy":
+                from src.common.annotation_writer import _rewrite_coco_bbox_to_xyxy
+
+                _rewrite_coco_bbox_to_xyxy(metadata_path)
+            logger.info(f"Saved COCO annotations to {metadata_path}")
 
         return results

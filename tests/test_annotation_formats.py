@@ -280,3 +280,213 @@ def test_yolo_annotation_multiple_objects():
             assert line_count == 3, (
                 f"Expected 3 annotations in single TXT file, got {line_count}"
             )
+
+
+def test_yolo_non_bbox_method_outputs_polygon_values():
+    """sam3 method should export YOLO segmentation polygons, not bbox-only rows."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch, MagicMock
+    import numpy as np
+    from src.segmentation.processor import SegmentationProcessor
+
+    with (
+        patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        mock_wrapper = MagicMock()
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:60, 20:70] = 255
+        mock_wrapper.predict_with_scores.return_value = {
+            "masks": [mock_mask],
+            "scores": [0.95],
+        }
+        mock_sam.return_value = mock_wrapper
+
+        processor = SegmentationProcessor(
+            "fake.pt",
+            device="cpu",
+            segmentation_method="sam3",
+            annotation_format="yolo",
+        )
+
+        img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            processor.process_image(image=img, output_dir=tmpdir, base_name="test")
+
+            labels_dir = Path(tmpdir) / "labels"
+            txt_files = list(labels_dir.glob("*.txt"))
+            assert len(txt_files) == 1
+            parts = txt_files[0].read_text().strip().split()
+            assert len(parts) > 5, (
+                f"Expected polygon-style YOLO row (>5 values), got {len(parts)} values"
+            )
+
+
+def test_yolo_bbox_method_outputs_bbox_values_only():
+    """sam3-bbox method should export YOLO bbox rows."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch, MagicMock
+    import numpy as np
+    from src.segmentation.processor import SegmentationProcessor
+
+    with (
+        patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        mock_wrapper = MagicMock()
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:60, 20:70] = 255
+        mock_wrapper.predict_with_scores.return_value = {
+            "masks": [mock_mask],
+            "scores": [0.95],
+        }
+        mock_sam.return_value = mock_wrapper
+
+        processor = SegmentationProcessor(
+            "fake.pt",
+            device="cpu",
+            segmentation_method="sam3-bbox",
+            annotation_format="yolo",
+        )
+
+        img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            processor.process_image(image=img, output_dir=tmpdir, base_name="test")
+
+            labels_dir = Path(tmpdir) / "labels"
+            txt_files = list(labels_dir.glob("*.txt"))
+            assert len(txt_files) == 1
+            parts = txt_files[0].read_text().strip().split()
+            assert len(parts) == 5
+
+
+def test_voc_non_bbox_method_exports_segmentation_mask_png():
+    """sam3 method should export VOC XML and segmentation mask PNG."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch, MagicMock
+    import numpy as np
+    from src.segmentation.processor import SegmentationProcessor
+
+    with (
+        patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        mock_wrapper = MagicMock()
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:60, 20:70] = 255
+        mock_wrapper.predict_with_scores.return_value = {
+            "masks": [mock_mask],
+            "scores": [0.95],
+        }
+        mock_sam.return_value = mock_wrapper
+
+        processor = SegmentationProcessor(
+            "fake.pt", device="cpu", segmentation_method="sam3", annotation_format="voc"
+        )
+
+        img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            processor.process_image(image=img, output_dir=tmpdir, base_name="test")
+
+            annotations_dir = Path(tmpdir) / "Annotations"
+            assert len(list(annotations_dir.glob("*.xml"))) == 1
+
+            seg_dir = Path(tmpdir) / "SegmentationClass"
+            assert len(list(seg_dir.glob("*.png"))) == 1
+
+
+def test_voc_bbox_method_does_not_export_segmentation_mask_png():
+    """sam3-bbox method should not export VOC segmentation mask PNG."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch, MagicMock
+    import numpy as np
+    from src.segmentation.processor import SegmentationProcessor
+
+    with (
+        patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        mock_wrapper = MagicMock()
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:60, 20:70] = 255
+        mock_wrapper.predict_with_scores.return_value = {
+            "masks": [mock_mask],
+            "scores": [0.95],
+        }
+        mock_sam.return_value = mock_wrapper
+
+        processor = SegmentationProcessor(
+            "fake.pt",
+            device="cpu",
+            segmentation_method="sam3-bbox",
+            annotation_format="voc",
+        )
+
+        img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            processor.process_image(image=img, output_dir=tmpdir, base_name="test")
+
+            annotations_dir = Path(tmpdir) / "Annotations"
+            assert len(list(annotations_dir.glob("*.xml"))) == 1
+
+            seg_dir = Path(tmpdir) / "SegmentationClass"
+            assert len(list(seg_dir.glob("*.png"))) == 0
+
+
+def test_coco_non_bbox_method_keeps_segmentation_and_mask_area():
+    """sam3 + coco should keep segmentation and use mask area."""
+    import json
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch, MagicMock
+    import numpy as np
+    import cv2
+    from src.segmentation.processor import SegmentationProcessor
+
+    with (
+        patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        mock_wrapper = MagicMock()
+        # L-shape mask: bbox area is 2500, mask area is 1600
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:60, 20:70] = 255
+        mock_mask[30:60, 40:70] = 0
+        mock_wrapper.predict_with_scores.return_value = {
+            "masks": [mock_mask],
+            "scores": [0.95],
+        }
+        mock_sam.return_value = mock_wrapper
+
+        processor = SegmentationProcessor(
+            "fake.pt",
+            device="cpu",
+            segmentation_method="sam3",
+            annotation_format="coco",
+            coco_output_mode="unified",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_dir = Path(tmpdir) / "in"
+            output_dir = Path(tmpdir) / "out"
+            input_dir.mkdir(parents=True, exist_ok=True)
+
+            img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+            cv2.imwrite(str(input_dir / "sample.jpg"), img)
+
+            processor.process_directory(input_dir=input_dir, output_dir=output_dir)
+
+            coco_path = output_dir / "annotations.coco.json"
+            assert coco_path.exists()
+            data = json.loads(coco_path.read_text())
+            ann = data["annotations"][0]
+            assert ann["segmentation"]
+            assert ann["area"] == 1600

@@ -147,9 +147,10 @@ def test_top_level_command_order_matches_dataset_workflow() -> None:
             commands = list(action.choices.keys())
             break
 
-    assert commands[:7] == [
+    assert commands[:8] == [
         "extract-frames",
         "segment",
+        "measure",
         "synthesize",
         "clean",
         "augment",
@@ -169,7 +170,7 @@ def test_version_flag_prints_package_version_long(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.1.6"
+    assert out.strip() == "entomokit 0.2.0"
 
 
 def test_version_flag_prints_package_version_short(
@@ -183,4 +184,4 @@ def test_version_flag_prints_package_version_short(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.1.6"
+    assert out.strip() == "entomokit 0.2.0"

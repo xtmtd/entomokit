@@ -126,11 +126,13 @@ def _build_parser() -> argparse.ArgumentParser:
     from entomokit import clean as _clean
     from entomokit import augment as _augment
     from entomokit import split_csv as _split_csv
+    from entomokit import measure as _measure
     from entomokit import doctor as _doctor
     from entomokit.classify import register as _register_classify
 
     _extract_frames.register(subparsers)
     _segment.register(subparsers)
+    _measure.register(subparsers)
     _synthesize.register(subparsers)
     _clean.register(subparsers)
     _augment.register(subparsers)
@@ -152,7 +154,7 @@ def _get_version() -> str:
     try:
         return importlib.metadata.version("entomokit")
     except importlib.metadata.PackageNotFoundError:
-        return "0.1.6"
+        return "0.2.0"
 
 
 def _activate_argcomplete(parser: argparse.ArgumentParser) -> None:

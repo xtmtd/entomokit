@@ -53,7 +53,7 @@ entomokit <command> [options]
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - Operating Systems: Linux, macOS, Windows
 
 ## Installation

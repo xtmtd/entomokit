@@ -53,7 +53,7 @@ entomokit <command> [options]
 
 ## 系统要求
 
-- Python 3.8+
+- Python 3.9+
 - 操作系统：Linux、macOS、Windows
 
 ## 安装

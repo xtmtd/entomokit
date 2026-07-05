@@ -16,8 +16,8 @@ setup(
     ],
     extras_require={
         "segmentation": [
-            "torch>=2.0.0,<2.4.0",
-            "torchvision>=0.15.0,<0.19.0",
+            "torch>=2.0.0",
+            "torchvision>=0.15.0",
             "opencv-python>=4.8.0",
             "scikit-image>=0.21.0",
             "iopath",
@@ -50,7 +50,7 @@ setup(
             "setuptools<70",   # ponytail: AutoGluon needs pkg_resources removed in >=70
         ],
     },
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     entry_points={
         "console_scripts": [
             "entomokit=entomokit.main:main",
@@ -61,10 +61,11 @@ setup(
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Topic :: Scientific/Engineering :: Image Processing",
     ],
 )

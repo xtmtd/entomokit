@@ -298,8 +298,7 @@ out_dir/
 **输出**：
 ```
 out_dir/
-└── logs/
-    └── evaluations.txt
+└── evaluations.csv
 ```
 
 ### 5.5 `classify embed`

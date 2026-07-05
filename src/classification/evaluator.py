@@ -9,6 +9,167 @@ import pandas as pd
 import numpy as np
 
 
+def _predictor_class_labels(predictor) -> list[str] | None:
+    for attr in ("classes_", "classes", "class_labels"):
+        value = getattr(predictor, attr, None)
+        if value is None or isinstance(value, str):
+            continue
+        try:
+            return list(value)
+        except TypeError:
+            continue
+    return None
+
+
+def _resolve_class_labels(labels, predictions, class_labels=None) -> list:
+    if class_labels is not None:
+        return list(class_labels)
+    return sorted(set(labels) | set(predictions))
+
+
+def _align_proba_to_metric_labels(proba, ordered_labels, metric_labels):
+    if proba is None or ordered_labels == metric_labels:
+        return proba
+    if proba.ndim != 2 or proba.shape[1] != len(ordered_labels):
+        return proba
+    order = {label: idx for idx, label in enumerate(ordered_labels)}
+    try:
+        return proba[:, [order[label] for label in metric_labels]]
+    except KeyError:
+        return proba
+
+
+def build_evaluation_result(
+    labels,
+    predictions,
+    proba: np.ndarray | None = None,
+    class_labels=None,
+) -> dict[str, object]:
+    from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
+
+    ordered_labels = _resolve_class_labels(
+        labels, predictions, class_labels=class_labels
+    )
+    metric_labels = ordered_labels
+    if class_labels is not None:
+        class_index = list(range(len(ordered_labels)))
+        if set(labels).issubset(class_index) and set(predictions).issubset(class_index):
+            metric_labels = class_index
+    auc_labels = metric_labels
+    if class_labels is not None and metric_labels == ordered_labels:
+        auc_labels = sorted(set(labels))
+
+    metrics = compute_classification_metrics(
+        labels=labels,
+        predictions=predictions,
+        proba=_align_proba_to_metric_labels(proba, ordered_labels, auc_labels),
+    )
+
+    confusion = confusion_matrix(labels, predictions, labels=metric_labels)
+    confusion_df = pd.DataFrame(confusion, index=ordered_labels, columns=ordered_labels)
+
+    normalized = confusion.astype(float)
+    row_sums = normalized.sum(axis=1, keepdims=True)
+    normalized = np.divide(
+        normalized,
+        row_sums,
+        out=np.zeros_like(normalized),
+        where=row_sums != 0,
+    )
+    normalized_df = pd.DataFrame(
+        normalized,
+        index=ordered_labels,
+        columns=ordered_labels,
+    )
+
+    precision, recall, f1_score, support = precision_recall_fscore_support(
+        labels,
+        predictions,
+        labels=metric_labels,
+        zero_division=0,
+    )
+    per_class_df = pd.DataFrame(
+        [
+            {
+                "label": label,
+                "precision": precision[idx],
+                "recall": recall[idx],
+                "f1-score": f1_score[idx],
+                "support": support[idx],
+            }
+            for idx, label in enumerate(ordered_labels)
+        ]
+    )
+
+    return {
+        "metrics": metrics,
+        "class_labels": ordered_labels,
+        "confusion_matrix": confusion_df,
+        "confusion_matrix_normalized": normalized_df,
+        "per_class_metrics": per_class_df,
+    }
+
+
+def _write_confusion_matrix_pdf(result: dict[str, object], pdf_path: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    class_labels = result["class_labels"]
+    class_count = len(class_labels)
+    cell_size = 0.45
+    fig, ax = plt.subplots(
+        figsize=(max(6, class_count * cell_size + 3),
+                 max(5, class_count * cell_size + 1.5))
+    )
+    heatmap = ax.imshow(
+        result["confusion_matrix_normalized"].to_numpy(),
+        cmap="Blues",
+        aspect="equal",
+        vmin=0, vmax=1,
+    )
+    ax.set_xticks(range(class_count), class_labels, rotation=45, ha="right")
+    ax.set_yticks(range(class_count), class_labels)
+    ax.set_xlabel("Predicted label")
+    ax.set_ylabel("True label")
+    fig.tight_layout()
+    fig.savefig(pdf_path)
+    plt.close(fig)
+
+
+def write_evaluation_outputs(
+    result: dict[str, object],
+    out_dir: Path,
+    pdf_class_limit: int = 50,
+) -> dict[str, Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics_df = pd.DataFrame(
+        [{"metric": name, "value": value} for name, value in result["metrics"].items()]
+    )
+    metrics_csv = out_dir / "evaluations.csv"
+    confusion_csv = out_dir / "confusion_matrix.csv"
+    normalized_csv = out_dir / "confusion_matrix_normalized.csv"
+    per_class_csv = out_dir / "per_class_metrics.csv"
+
+    metrics_df.to_csv(metrics_csv, index=False)
+    result["confusion_matrix"].to_csv(confusion_csv, index_label="label")
+    result["confusion_matrix_normalized"].to_csv(normalized_csv, index_label="label")
+    result["per_class_metrics"].to_csv(per_class_csv, index=False)
+
+    written = {
+        "evaluations_csv": metrics_csv,
+        "confusion_matrix_csv": confusion_csv,
+        "confusion_matrix_normalized_csv": normalized_csv,
+        "per_class_metrics_csv": per_class_csv,
+    }
+
+    if len(result["class_labels"]) <= pdf_class_limit:
+        pdf_path = out_dir / "confusion_matrix.pdf"
+        _write_confusion_matrix_pdf(result, pdf_path)
+        written["confusion_matrix_pdf"] = pdf_path
+
+    return written
+
+
 def compute_classification_metrics(
     labels,
     predictions,
@@ -95,8 +256,8 @@ def evaluate(
     num_workers: int,
     num_threads: int,
     device: str,
-) -> Dict[str, float]:
-    """Evaluate AutoGluon predictor. Returns dict of metric name → value."""
+) -> dict[str, object]:
+    """Evaluate AutoGluon predictor and return metrics plus per-class artifacts."""
     from autogluon.multimodal import MultiModalPredictor
     from src.classification.utils import set_num_threads
 
@@ -108,6 +269,7 @@ def evaluate(
     predictor = MultiModalPredictor.load(str(model_dir))
     predictions = predictor.predict(df).values
     labels = df["label"].values
+    class_labels = _predictor_class_labels(predictor)
 
     proba = None
     try:
@@ -115,10 +277,11 @@ def evaluate(
     except Exception:
         proba = None
 
-    return compute_classification_metrics(
+    return build_evaluation_result(
         labels=labels,
         predictions=predictions,
         proba=proba,
+        class_labels=class_labels,
     )
 
 
@@ -128,8 +291,8 @@ def evaluate_onnx(
     onnx_path: Path,
     batch_size: int,
     num_threads: int,
-) -> Dict[str, float]:
-    """Evaluate ONNX model using predict_onnx + sklearn metrics."""
+) -> dict[str, object]:
+    """Evaluate ONNX model and return metrics plus per-class artifacts."""
     from src.classification.predictor import predict_onnx, load_onnx_class_labels
 
     df = pd.read_csv(test_csv)
@@ -158,8 +321,9 @@ def evaluate_onnx(
     )
     proba = result[proba_cols].to_numpy() if proba_cols else None
 
-    return compute_classification_metrics(
+    return build_evaluation_result(
         labels=labels,
         predictions=predictions,
         proba=proba,
+        class_labels=class_labels,
     )

@@ -4,6 +4,8 @@
 
 一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、形态学测量、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
 
+当前仓库版本：`0.3.0`。
+
 ## 概述
 
 所有功能通过单一入口访问：
@@ -23,7 +25,7 @@ entomokit <command> [options]
 | `split-csv` | 将数据集划分为 train/val/test CSV 文件 |
 | `classify train` | 训练 AutoMM 图像分类器 |
 | `classify predict` | 运行推理（AutoMM 或 ONNX） |
-| `classify evaluate` | 评估模型性能 |
+| `classify evaluate` | 评估模型性能并导出总体 + 类别级诊断结果 |
 | `classify embed` | 提取嵌入向量 + UMAP + 质量指标 |
 | `classify cam` | 生成 GradCAM 热力图 |
 | `classify export-onnx` | 导出模型为 ONNX 格式 |
@@ -42,6 +44,7 @@ entomokit <command> [options]
 - **数据集划分**：基于比例或数量的 train/val/test 划分，支持分层采样
 - **图像合成**：高级合成功能，支持旋转、颜色匹配、黑区规避
 - **AutoMM 分类**：训练、预测、评估、嵌入、GradCAM、ONNX 导出
+- **类别级评估诊断**：`classify evaluate` 会输出混淆矩阵、按真实类别归一化的召回矩阵、每类 precision/recall/F1，以及类数较少时的混淆矩阵 PDF
 - **环境诊断**：`doctor` 命令输出依赖状态并给出安装/升级建议
 - **嵌入质量指标**：NMI、ARI、Recall@K、kNN 准确率、mAP@R、轮廓系数、UMAP 可视化
 - **并行处理**：多线程图像处理，可配置工作线程数
@@ -155,6 +158,33 @@ pip install -e ".[augment]"
 pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 ```
 
+## Shell Completion
+
+`entomokit` 通过 `completion` 子命令提供静态 shell 补全脚本。
+
+输出脚本到标准输出：
+
+```bash
+entomokit completion bash
+entomokit completion zsh
+entomokit completion fish
+```
+
+安装到对应 shell 的默认用户级路径：
+
+```bash
+entomokit completion bash --install
+entomokit completion zsh --install
+entomokit completion fish --install
+```
+
+说明：
+
+- `bash` 安装到 `~/.local/share/bash-completion/completions/entomokit`
+- `zsh` 安装到 `~/.zfunc/_entomokit`
+- `fish` 安装到 `~/.config/fish/completions/entomokit.fish`
+- 对于 `zsh`，请确保 shell 配置中包含 `fpath=(~/.zfunc $fpath)`，并使用 `autoload -Uz compinit && compinit` 初始化补全系统
+
 ## 项目结构
 
 ```
@@ -169,6 +199,7 @@ pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 │   ├── augment.py          # entomokit augment
 │   ├── split_csv.py        # entomokit split-csv
 │   ├── doctor.py           # entomokit doctor
+│   ├── completion.py       # shell 补全脚本生成
 │   ├── help_style.py       # Rich 帮助格式化
 │   └── classify/           # entomokit classify *
 │       ├── train.py
@@ -776,6 +807,12 @@ entomokit classify evaluate \
 - Matthews 相关系数（MCC）
 - Quadratic Kappa
 - ROC-AUC（OVO、OVR）
+
+**附加输出**：
+- `confusion_matrix.csv`：原始计数混淆矩阵（真实类别为行，预测类别为列）
+- `confusion_matrix_normalized.csv`：按真实类别行归一化的混淆矩阵，便于诊断每类召回表现
+- `per_class_metrics.csv`：每类 precision、recall、F1、support
+- `confusion_matrix.pdf`：当类别数较少、图仍可读时导出的热图 PDF
 
 ---
 

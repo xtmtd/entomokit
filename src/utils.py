@@ -133,12 +133,12 @@ def save_image(
     
     # Convert BGR to RGB if needed
     if image.shape[2] == 3:
-        img_pil = Image.fromarray(image, mode='RGB')
+        img_pil = Image.fromarray(image)
     elif image.shape[2] == 4:
         if format_lower in ['jpg', 'jpeg']:
-            img_pil = Image.fromarray(image, mode='RGBA').convert('RGB')
+            img_pil = Image.fromarray(image).convert('RGB')
         else:
-            img_pil = Image.fromarray(image, mode='RGBA')
+            img_pil = Image.fromarray(image)
     else:
         img_pil = Image.fromarray(image)
     

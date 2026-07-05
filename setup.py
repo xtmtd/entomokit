@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="entomokit",
-    version="0.2.0",
+    version="0.3.0",
     description="A Python toolkit for building insect image datasets with segmentation, frame extraction, cleaning, dataset splitting, and image synthesis capabilities",
     author="Feng ZHANG",
     author_email="xtmtd.zf@gmail.com",
@@ -12,6 +12,7 @@ setup(
         "numpy>=1.24.0",
         "Pillow>=10.0.0",
         "tqdm>=4.65.0",
+        "pandas",
     ],
     extras_require={
         "segmentation": [
@@ -19,15 +20,17 @@ setup(
             "torchvision>=0.15.0,<0.19.0",
             "opencv-python>=4.8.0",
             "scikit-image>=0.21.0",
+            "iopath",
+            "huggingface-hub",
+            "einops",
+            "pycocotools",
+            "ftfy",
         ],
         "cleaning": [
             "imagehash",
         ],
         "video": [
             "opencv-python>=4.8.0",
-        ],
-        "data": [
-            "pandas",
         ],
         "dev": [
             "pytest>=7.4.0",
@@ -40,9 +43,11 @@ setup(
             "autogluon.multimodal>=1.4.0",
             "timm>=0.9.0",
             "umap-learn",
+            "matplotlib",
             "grad-cam",
             "onnxruntime",
             "scikit-learn",
+            "setuptools<70",   # ponytail: AutoGluon needs pkg_resources removed in >=70
         ],
     },
     python_requires=">=3.8",

@@ -1,29 +1,15 @@
-# Core dependencies (all scripts)
+# Core dependencies (installed with `pip install -e .`)
 numpy>=1.24.0
 Pillow>=10.0.0
 tqdm>=4.65.0
-
-# Segmentation (segment.py) - also required for SAM3-based methods
-torch>=2.0.0
-torchvision>=0.15.0
-opencv-python>=4.8.0
-
-# Video frame extraction (extract_frames.py)
-opencv-python>=4.8.0
-
-# Image cleaning (clean_figs.py)
-imagehash
-
-# Dataset splitting (split_dataset.py)
 pandas
-# Image synthesis (synthesize.py) - uses skimage for color matching
-scikit-image
 
-# Image augmentation (augment.py)
-albumentations>=1.4.0
-
-# ONNX inference/export for classify --onnx-model
-onnxruntime
-
-# AutoMM classification (classify.py)
-autogluon.multimodal>=1.4.0
+# Optional extras — install with `pip install -e ".[<group>]"`
+#   segmentation: torch, torchvision, opencv-python, scikit-image,
+#                 iopath, huggingface-hub, einops, pycocotools, ftfy
+#   cleaning:     imagehash
+#   video:        opencv-python
+#   augment:      albumentations
+#   classify:     autogluon.multimodal, timm, umap-learn, matplotlib,
+#                 grad-cam, onnxruntime, scikit-learn, setuptools<70
+#   dev:          pytest, pytest-cov

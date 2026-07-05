@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
@@ -74,9 +73,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
-    import pandas as pd
     from src.classification.utils import select_device, ag_device_map
     from src.common.cli import save_log
+    from src.classification.evaluator import write_evaluation_outputs
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -87,7 +86,7 @@ def run(args: argparse.Namespace) -> None:
     if args.model_dir:
         from src.classification.evaluator import evaluate
 
-        metrics = evaluate(
+        result = evaluate(
             test_csv=Path(args.test_csv),
             images_dir=Path(args.images_dir),
             model_dir=Path(args.model_dir),
@@ -99,7 +98,7 @@ def run(args: argparse.Namespace) -> None:
     else:
         from src.classification.evaluator import evaluate_onnx
 
-        metrics = evaluate_onnx(
+        result = evaluate_onnx(
             test_csv=Path(args.test_csv),
             images_dir=Path(args.images_dir),
             onnx_path=Path(args.onnx_model),
@@ -107,15 +106,13 @@ def run(args: argparse.Namespace) -> None:
             num_threads=args.num_threads,
         )
 
-    eval_csv = out_dir / "evaluations.csv"
-    metrics_df = pd.DataFrame(
-        [
-            {"metric": metric_name, "value": metric_value}
-            for metric_name, metric_value in metrics.items()
-        ]
-    )
-    metrics_df.to_csv(eval_csv, index=False)
+    written = write_evaluation_outputs(result, out_dir)
+    metrics = result["metrics"]
+    eval_csv = written["evaluations_csv"]
 
     for metric_name, metric_value in metrics.items():
         print(f"{metric_name}: {metric_value:.6f}")
+    if "confusion_matrix_pdf" not in written:
+        class_count = len(result["class_labels"])
+        print(f"Skipped confusion_matrix.pdf: too many classes ({class_count} > 50)")
     print(f"\nResults saved to: {eval_csv}")

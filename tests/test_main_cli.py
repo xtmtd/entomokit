@@ -5,8 +5,10 @@ from __future__ import annotations
 import pytest
 
 
-def test_help_lists_install_completion(capsys: pytest.CaptureFixture[str]) -> None:
-    """Top-level help includes the completion installer flag."""
+def test_help_omits_legacy_install_completion_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Top-level help should only expose the completion command, not a legacy flag."""
     from entomokit.main import main
 
     with pytest.raises(SystemExit) as exc:
@@ -14,7 +16,8 @@ def test_help_lists_install_completion(capsys: pytest.CaptureFixture[str]) -> No
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert "--install-completion" in out
+    assert "--install-completion" not in out
+    assert "completion" in out
 
 
 def test_help_includes_quick_examples(capsys: pytest.CaptureFixture[str]) -> None:
@@ -98,40 +101,125 @@ def test_classify_train_help_has_quick_examples_and_boxed_options(
     assert "[ Options ]:" in out
 
 
-def test_install_completion_works_without_subcommand(
-    monkeypatch: pytest.MonkeyPatch,
+def test_completion_group_help_lists_shells(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """--install-completion should run as a global option."""
-    from entomokit import main as cli_main
+    from entomokit.main import main
 
-    called = {"value": False}
-
-    def _fake_install() -> int:
-        called["value"] = True
-        return 0
-
-    monkeypatch.setattr(cli_main, "_install_completion", _fake_install)
     with pytest.raises(SystemExit) as exc:
-        cli_main.main(["--install-completion"])
+        main(["completion", "--help"])
 
     assert exc.value.code == 0
-    assert called["value"] is True
+    out = capsys.readouterr().out
+    assert "bash" in out
+    assert "zsh" in out
+    assert "fish" in out
 
 
-def test_main_enables_argcomplete(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() should activate argcomplete hook before parsing."""
-    from entomokit import main as cli_main
+def test_completion_zsh_outputs_static_script(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from entomokit.main import main
 
-    called = {"value": False}
+    main(["completion", "zsh"])
+    out = capsys.readouterr().out
+    assert "entomokit" in out
+    assert "compdef" in out or "complete" in out
+    assert "classify" in out
+    assert "train" in out
+    assert "predict" in out
+    assert "evaluate" in out
+    assert "--version" in out
+    assert "auto" in out
+    assert "cuda" in out
 
-    def _fake_activate(parser: object) -> None:
-        called["value"] = True
 
-    monkeypatch.setattr(cli_main, "_activate_argcomplete", _fake_activate)
-    with pytest.raises(SystemExit):
-        cli_main.main(["--help"])
+def test_completion_fish_supports_nested_classify_subcommands(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from entomokit.main import main
 
-    assert called["value"] is True
+    main(["completion", "fish"])
+    out = capsys.readouterr().out
+    assert "complete -c entomokit -n '__fish_seen_subcommand_from classify; and not " in out
+    assert "__fish_seen_subcommand_from classify; and not __fish_seen_subcommand_from classify" not in out
+    assert " -a 'cam embed evaluate export-onnx predict train'" in out
+
+
+def test_completion_fish_classify_train_options_require_command_sequence(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from entomokit.main import main
+
+    main(["completion", "fish"])
+    out = capsys.readouterr().out
+    assert "__fish_seen_entomokit_command_sequence classify train" in out
+    assert "__fish_seen_subcommand_from classify train" not in out
+
+
+def test_completion_fish_renders_short_flags_as_short_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from entomokit.main import main
+
+    main(["completion", "fish"])
+    out = capsys.readouterr().out
+    assert "complete -c entomokit -n '__fish_use_subcommand' -s 'v'" in out
+    assert "complete -c entomokit -n '__fish_use_subcommand' -l 'v'" not in out
+
+
+def test_completion_bash_and_zsh_quote_nested_case_labels() -> None:
+    from entomokit.completion import render_completion_script
+
+    for shell in ("bash", "zsh"):
+        out = render_completion_script(shell)
+        assert "classify\\ train)" in out
+        assert "classify train)" not in out
+
+
+def test_completion_zsh_uses_dollar_CURRENT_in_array_subscripts() -> None:
+    from entomokit.completion import render_completion_script
+
+    zsh = render_completion_script("zsh")
+    assert "${words[CURRENT]}" not in zsh
+    assert "cur=$words[CURRENT]" in zsh
+    assert "prev=$words[$((CURRENT-1))]" in zsh
+
+
+def test_completion_zsh_does_not_shadow_completion_words() -> None:
+    from entomokit.completion import render_completion_script
+
+    zsh = render_completion_script("zsh")
+    bash = render_completion_script("bash")
+    assert "local -a words" not in zsh
+    assert "local -a command_words" in zsh
+    assert "for word in \"${command_words[@]}\"; do" in zsh
+    assert "local -a words" in bash
+
+
+def test_completion_choice_cases_are_scoped_by_command_path() -> None:
+    from entomokit.completion import render_completion_script
+
+    out = render_completion_script("bash")
+    assert "extract-frames:--out-image-format) _entomokit_reply 'jpg png tif'; return ;;" in out
+    assert "segment:--out-image-format) _entomokit_reply 'jpg png'; return ;;" in out
+    assert "\n    --out-image-format) _entomokit_reply" not in out
+
+
+def test_install_zsh_completion_prints_activation_hint(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from entomokit.completion import install_for_shell
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.setenv("CONDA_PREFIX", str(tmp_path / "env"))
+
+    assert install_for_shell("zsh") == 0
+    out = capsys.readouterr().out
+    assert "Installed zsh completion at:" in out
+    assert "Installed conda activation hook at:" in out
 
 
 def test_top_level_command_order_matches_dataset_workflow() -> None:
@@ -170,7 +258,7 @@ def test_version_flag_prints_package_version_long(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.2.0"
+    assert out.strip() == "entomokit 0.3.0"
 
 
 def test_version_flag_prints_package_version_short(
@@ -184,4 +272,4 @@ def test_version_flag_prints_package_version_short(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.2.0"
+    assert out.strip() == "entomokit 0.3.0"

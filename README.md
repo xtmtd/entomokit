@@ -4,6 +4,8 @@
 
 A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, morphology measurement, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
 
+Current release in this repository: `0.3.0`.
+
 ## Overview
 
 All functionality is accessed through a single entry point:
@@ -23,7 +25,7 @@ entomokit <command> [options]
 | `split-csv` | Split datasets into train/val/test CSVs |
 | `classify train` | Train an AutoMM image classifier |
 | `classify predict` | Run inference (AutoGluon or ONNX) |
-| `classify evaluate` | Evaluate model performance |
+| `classify evaluate` | Evaluate model performance and export overall + per-class diagnostics |
 | `classify embed` | Extract embeddings + UMAP + quality metrics |
 | `classify cam` | Generate GradCAM heatmaps |
 | `classify export-onnx` | Export model to ONNX format |
@@ -42,6 +44,7 @@ entomokit <command> [options]
 - **Dataset Splitting**: Ratio or count-based train/val/test splits with stratification
 - **Image Synthesis**: Advanced compositing with rotation, color matching, and black region avoidance
 - **AutoMM Classification**: Train, predict, evaluate, embed, GradCAM, and ONNX export
+- **Per-Class Evaluation Diagnostics**: `classify evaluate` writes confusion matrices, normalized recall matrix, per-class precision/recall/F1, and a confusion PDF for small label sets
 - **Environment Diagnostics**: `doctor` command reports missing/outdated dependencies and install suggestions
 - **Embedding Quality Metrics**: NMI, ARI, Recall@K, kNN accuracy, mAP@R, Silhouette, UMAP visualization
 - **Parallel Processing**: Multi-threaded image processing with configurable worker count
@@ -155,6 +158,33 @@ pip install -e ".[augment]"
 pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 ```
 
+## Shell Completion
+
+`entomokit` exposes static shell completion scripts through the `completion` subcommand.
+
+Generate a script to stdout:
+
+```bash
+entomokit completion bash
+entomokit completion zsh
+entomokit completion fish
+```
+
+Install to the default user-level location for a specific shell:
+
+```bash
+entomokit completion bash --install
+entomokit completion zsh --install
+entomokit completion fish --install
+```
+
+Notes:
+
+- `bash` installs to `~/.local/share/bash-completion/completions/entomokit`
+- `zsh` installs to `~/.zfunc/_entomokit`
+- `fish` installs to `~/.config/fish/completions/entomokit.fish`
+- For `zsh`, ensure your shell config includes `fpath=(~/.zfunc $fpath)` and initialize completions with `autoload -Uz compinit && compinit`
+
 ## Project Structure
 
 ```
@@ -169,6 +199,7 @@ pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
 │   ├── augment.py          # entomokit augment
 │   ├── split_csv.py        # entomokit split-csv
 │   ├── doctor.py           # entomokit doctor
+│   ├── completion.py       # shell completion script generation
 │   ├── help_style.py       # Rich help formatting
 │   └── classify/           # entomokit classify *
 │       ├── train.py
@@ -765,6 +796,12 @@ entomokit classify evaluate \
 - Matthews Correlation Coefficient (MCC)
 - Quadratic Kappa
 - ROC-AUC (OVO, OVR)
+
+**Additional outputs**:
+- `confusion_matrix.csv` — Raw count matrix (true label rows, predicted label columns)
+- `confusion_matrix_normalized.csv` — Row-normalized confusion matrix for per-class recall diagnosis
+- `per_class_metrics.csv` — Per-class precision, recall, F1, support
+- `confusion_matrix.pdf` — Heatmap PDF when class count is small enough to stay readable
 
 ---
 

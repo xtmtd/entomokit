@@ -1002,6 +1002,7 @@ class SegmentationProcessor:
         disable_tqdm: bool = False,
         output_format: str = "png",
         shutdown_flag: Optional[Callable[[], bool]] = None,
+        skip_existing: bool = False,
     ) -> Dict[str, Any]:
         """
         Process all images in directory.
@@ -1041,6 +1042,12 @@ class SegmentationProcessor:
 
             try:
                 # Load image
+                if skip_existing:
+                    images_dir = output_dir / "images"
+                    if any(images_dir.glob(f"{img_path.stem}*")):
+                        results.setdefault("skipped", 0)
+                        results["skipped"] += 1
+                        continue
                 image = load_image(img_path)
 
                 # Process

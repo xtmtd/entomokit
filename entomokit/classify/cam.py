@@ -125,6 +125,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="CPU threads for PyTorch operations (0 = auto).",
     )
     p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and regenerate CAM visualizations.",
+    )
+    p.add_argument(
         "--device",
         default="auto",
         choices=["auto", "cpu", "cuda", "mps"],
@@ -137,10 +142,10 @@ def run(args: argparse.Namespace) -> None:
     from pathlib import Path
     from src.classification.utils import select_device, set_num_threads
     from src.classification.cam import run_cam
-    from src.common.cli import save_log
+    from src.common.cli import check_output_dir, save_log
 
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     save_log(out_dir, args)
 
     device = select_device(args.device)

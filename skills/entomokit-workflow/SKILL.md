@@ -1,6 +1,6 @@
 ---
 name: entomokit-workflow
-description: Conversational workflow orchestrator for EntomoKit from dataset preparation to model training/evaluation/export. Use when users ask to run, plan, troubleshoot, or learn entomokit commands (doctor, clean, segment, measure, synthesize, augment, split-csv, classify), especially for step-by-step guidance, CSV validation, morphology measurement, teaching demos, and safe parameter confirmation.
+description: Conversational workflow orchestrator for EntomoKit from dataset preparation to model training/evaluation/export. Use when users ask to run, plan, troubleshoot, or learn entomokit commands (doctor, update, clean, segment, measure, synthesize, augment, split-csv, classify), especially for step-by-step guidance, CSV validation, morphology measurement, teaching demos, and safe parameter confirmation.
 ---
 
 # EntomoKit Workflow
@@ -25,6 +25,7 @@ Run the workflow in phases. Keep user data as first priority.
 9. On failed/retry runs, do not overwrite prior artifacts by default. Either:
    - create a new sibling output directory (for example `train-run001/`, `train-run002/`), or
    - delete failed output only after explicit user approval.
+   (CLI-level `--resume`/`--overwrite` flags provide per-run control within a single `--out-dir`; the skill-layer new-directory policy is a higher-level default)
 10. `clean` failures must still write to `runs/runNNN/...`; never place cleaned output next to raw input folders.
 11. Workflow execution policy is `entomokit-only` by default:
    - prefer `entomokit <command>` for all workflow actions,

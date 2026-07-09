@@ -41,13 +41,24 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging."
     )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Append measurements for new masks; skip masks already in metrics.csv.",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and start fresh.",
+    )
     p.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> None:
-    from src.common.cli import save_log, setup_logging, setup_shutdown_handler
+    from src.common.cli import save_log, setup_logging, setup_shutdown_handler, check_output_dir, reset_shutdown_flag, get_shutdown_flag
     from src.measurement.service import run_batch
 
+    reset_shutdown_flag()
     setup_shutdown_handler()
 
     mask_dir = Path(args.mask_dir)
@@ -65,14 +76,27 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, args.resume, args.overwrite)
     logger = setup_logging(out_dir, verbose=args.verbose)
     save_log(out_dir, args)
+
+    existing_rows: list[dict[str, str]] = []
+    if args.resume:
+        import csv as _csv
+        existing_csv = out_dir / "metrics.csv"
+        if existing_csv.exists():
+            with existing_csv.open(newline="", encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                existing_rows = list(reader)
+            print(f"Resuming: skipping {len(existing_rows)} already-measured masks.")
 
     try:
         summary = run_batch(
             mask_dir=mask_dir,
             out_dir=out_dir,
             pixel_size_um=args.pixel_size_um,
+            existing_rows=existing_rows or None,
+            shutdown_flag=get_shutdown_flag(),
         )
     except Exception:
         logger.exception("Measurement failed")

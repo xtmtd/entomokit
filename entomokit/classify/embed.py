@@ -101,6 +101,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Compute device for embedding extraction.",
     )
     p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and re-extract embeddings.",
+    )
+    p.add_argument(
         "--metrics-sample-size",
         type=int,
         default=10000,
@@ -115,7 +120,7 @@ def run(args: argparse.Namespace) -> None:
     import numpy as np
     import pandas as pd
     from src.classification.utils import select_device, set_num_threads, load_image_csv
-    from src.common.cli import save_log
+    from src.common.cli import check_output_dir, save_log
 
     warnings.filterwarnings(
         "ignore",
@@ -135,6 +140,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     out_dir = Path(args.out_dir)
+    check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     logs_dir = out_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     save_log(logs_dir, args)

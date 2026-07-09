@@ -5,7 +5,7 @@ import multiprocessing
 import random
 import warnings
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Callable, List, Tuple, Optional, Dict, Any
 
 import cv2
 import numpy as np
@@ -990,6 +990,8 @@ class SynthesisProcessor:
         num_syntheses: int = 10,
         disable_tqdm: bool = False,
         threads: int = 1,
+        skip_existing: bool = False,
+        shutdown_flag: Optional[Callable[[], bool]] = None,
     ) -> dict:
         """Process all images in directories."""
         output_dir = Path(output_dir)
@@ -1025,6 +1027,14 @@ class SynthesisProcessor:
 
         tasks = []
         for target_path in target_paths:
+            if shutdown_flag is not None and shutdown_flag():
+                logger.info("Shutdown requested. Stopping synthesis.")
+                break
+            if skip_existing:
+                img_out = output_dir / self.output_subdir
+                if any(img_out.glob(f"{target_path.stem}_*")):
+                    skipped_images += 1
+                    continue
             try:
                 target_img = self._load_image(target_path)
             except Exception as e:

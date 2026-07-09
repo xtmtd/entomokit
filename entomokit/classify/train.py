@@ -55,13 +55,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--time-limit", type=float, default=1.0, help="Training time limit in hours."
     )
-    p.add_argument(
+    resume_group = p.add_mutually_exclusive_group()
+    resume_group.add_argument(
         "--resume",
         action="store_true",
         help=(
             "Resume an existing AutoGluon run from checkpoint in --out-dir/AutogluonModels/<base-model>. "
             "When used with a larger --max-epochs, training continues to the new epoch limit."
         ),
+    )
+    resume_group.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and train from scratch.",
     )
     p.add_argument(
         "--learning-rate",
@@ -145,10 +151,10 @@ def run(args: argparse.Namespace) -> None:
     from pathlib import Path
     from src.classification.utils import resolve_augment, select_device, ag_device_map
     from src.classification.trainer import train
-    from src.common.cli import save_log
+    from src.common.cli import check_output_dir, save_log
 
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, resume=args.resume, overwrite=args.overwrite)
     (out_dir / "logs").mkdir(exist_ok=True)
     save_log(out_dir / "logs", args, log_filename="log.txt")
 

@@ -57,18 +57,29 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=1,
         help="Number of augmented copies to create per input image.",
     )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip source images already augmented in --out-dir.",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and start fresh.",
+    )
     p.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> None:
     from src.augment.service import run_augment
-    from src.common.cli import save_log, setup_shutdown_handler
+    from src.common.cli import save_log, setup_shutdown_handler, check_output_dir, get_shutdown_flag, reset_shutdown_flag
 
+    reset_shutdown_flag()
     setup_shutdown_handler()
 
     input_dir = Path(args.input_dir)
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, args.resume, args.overwrite)
     save_log(out_dir, args)
 
     custom = None
@@ -85,6 +96,8 @@ def run(args: argparse.Namespace) -> None:
             custom=custom,
             seed=args.seed,
             multiply=args.multiply,
+            skip_existing=args.resume,
+            shutdown_flag=get_shutdown_flag(),
         )
     except Exception as exc:
         print(f"Augmentation failed: {exc}", file=sys.stderr)

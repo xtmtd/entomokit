@@ -23,6 +23,7 @@
 - Required in guided mode.
 - Typical defaults: `--out-short-size 512`, `--out-image-format jpg`, `--dedup-mode md5`.
 - If input has nested class folders, recommend `--recursive` and wait for user confirmation.
+- Non-empty `--out-dir` requires explicit `--resume` (continue) or `--overwrite` (fresh start); default exits with an error.
 
 ## segment
 
@@ -31,6 +32,7 @@
 - `--sam3-checkpoint` is required only for `sam3` and `sam3-bbox`.
 - For faster RGB crop output without alpha mask, recommend `otsu-bbox` or `grabcut-bbox`.
 - If user requests unsupported methods, mark unsupported and recommend nearest supported method.
+- Non-empty `--out-dir` requires `--resume` (skip already-segmented images) or `--overwrite`; default exits with an error.
 
 ## measure
 
@@ -54,6 +56,7 @@
 - AutoMM-oriented default recommendation: generate `train + test.known`; let AutoGluon create train/val split internally.
 - If user requests explicit val set, confirm `--val-ratio`, `--known-test-classes-ratio`, and `--unknown-test-classes-ratio` before run.
 - Always state ratios in plain language before execution.
+- Non-empty `--out-dir` requires explicit `--overwrite` (fresh start); default exits with an error.
 
 ## classify train
 
@@ -65,12 +68,16 @@
   - do not silently choose CPU.
 - Suggest `--focal-loss` for imbalanced classes.
 - After train completes, do not auto-run evaluate. First show key train results and ask user whether to proceed to `predict` or `evaluate`.
+- Non-empty `--out-dir` requires `--resume` (continue checkpoint training) or `--overwrite` (fresh training); default exits with an error.
 
-## classify predict/evaluate/export-onnx
+## classify predict/evaluate/embed/cam/export-onnx
 
 - Predict: accept `--images-dir` or `--input-csv`.
 - Evaluate: explain key metrics (Accuracy, Balanced Accuracy, F1 macro, MCC).
+- Embed: extract embeddings and quality metrics; optionally visualize with UMAP.
+- CAM: generate GradCAM heatmaps for model interpretability.
 - Export ONNX: generate `model.onnx` and `label_classes.json`.
+- All five subcommands accept `--overwrite` to delete `--out-dir` contents and start fresh; non-empty `--out-dir` without `--overwrite` exits with an error.
 
 ## Retry and Rerun
 
@@ -79,3 +86,4 @@
 - Default rerun output must be a new sibling directory with `-runNNN` suffix (`train-run001`, `train-run002`, etc.).
 - If user prefers cleanup, ask explicit approval before deleting failed output.
 - `clean` retry outputs must remain under `runs/runNNN/...`, never next to raw image folders.
+- CLI-level `--resume`/`--overwrite` flags apply within a single `--out-dir`. The skill-layer default (new sibling directory) is recommended for clean separation; `--resume` is appropriate when a run was interrupted and the partial output is valid.

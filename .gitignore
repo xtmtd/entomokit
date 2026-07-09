@@ -48,3 +48,6 @@ log.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Project output directories
+runs/

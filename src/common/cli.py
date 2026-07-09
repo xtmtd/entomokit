@@ -5,6 +5,7 @@ import atexit
 import logging
 import os
 import re
+import shutil
 import signal
 import sys
 from datetime import datetime
@@ -89,8 +90,10 @@ atexit.register(_disable_output_capture)
 
 
 def signal_handler(signum, frame):
-    """Handle SIGINT (Ctrl+C) by setting shutdown flag."""
+    """Handle SIGINT (Ctrl+C): first = graceful shutdown, second = force exit."""
     global _shutdown_requested
+    if _shutdown_requested:
+        raise KeyboardInterrupt
     _shutdown_requested = True
     print(
         "\nShutdown requested. Finishing current task and exiting gracefully...",
@@ -106,6 +109,12 @@ def setup_shutdown_handler():
 def get_shutdown_flag() -> Callable[[], bool]:
     """Return a callable that returns True when shutdown is requested."""
     return lambda: _shutdown_requested
+
+
+def reset_shutdown_flag() -> None:
+    """Reset the global shutdown flag (call at start of each command)."""
+    global _shutdown_requested
+    _shutdown_requested = False
 
 
 def setup_logging(
@@ -204,3 +213,22 @@ def validate_image_extensions(files: list, extensions: Optional[set] = None) -> 
         extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 
     return [f for f in files if Path(f).suffix.lower() in extensions]
+
+
+def check_output_dir(out_dir: Path, resume: bool, overwrite: bool, *, has_resume: bool = True) -> None:
+    if out_dir.exists() and any(out_dir.iterdir()):
+        if overwrite:
+            shutil.rmtree(out_dir)
+            out_dir.mkdir(parents=True)
+        elif not resume:
+            if has_resume:
+                hint = "Use --resume to continue or --overwrite to start fresh."
+            else:
+                hint = "Use --overwrite to start fresh."
+            print(
+                f"Error: output directory '{out_dir}' is not empty.\n{hint}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        out_dir.mkdir(parents=True, exist_ok=True)

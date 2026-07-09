@@ -146,7 +146,7 @@ def _render_bash_script(nodes: dict[str, dict[str, object]]) -> str:
         f"{path_cases}\n"
         "  esac\n"
         "}\n"
-        "complete -F _entomokit_completion entomokit\n"
+        "complete -o default -F _entomokit_completion entomokit\n"
     )
 
 
@@ -171,6 +171,7 @@ def _render_zsh_script(nodes: dict[str, dict[str, object]]) -> str:
         "  case \"$path\" in\n"
         f"{path_cases}\n"
         "  esac\n"
+        "  _files\n"
         "}\n"
         "compdef _entomokit entomokit\n"
     )
@@ -196,7 +197,7 @@ def _fish_option_flag(option: str) -> str:
 
 def _render_fish_script(nodes: dict[str, dict[str, object]]) -> str:
     lines = [
-        "complete -c entomokit -f",
+        "complete -c entomokit",
         "function __fish_seen_entomokit_command_sequence",
         "    set -l tokens (commandline -opc)",
         "    set -e tokens[1]",

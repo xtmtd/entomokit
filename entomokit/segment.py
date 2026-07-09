@@ -122,6 +122,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging."
     )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip images already present in --out-dir and continue a previous run.",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and start fresh.",
+    )
     p.set_defaults(func=run)
 
 
@@ -131,16 +141,19 @@ def run(args: argparse.Namespace) -> None:
     from src.common.cli import (
         setup_shutdown_handler,
         get_shutdown_flag,
+        reset_shutdown_flag,
         setup_logging,
         save_log,
+        check_output_dir,
     )
     from src.segmentation.processor import SegmentationProcessor
 
+    reset_shutdown_flag()
     setup_shutdown_handler()
 
     input_dir = Path(args.input_dir)
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, args.resume, args.overwrite)
 
     if not input_dir.exists():
         print(f"Error: --input-dir does not exist: {input_dir}", file=sys.stderr)
@@ -193,6 +206,7 @@ def run(args: argparse.Namespace) -> None:
             disable_tqdm=False,
             output_format=args.out_image_format,
             shutdown_flag=get_shutdown_flag(),
+            skip_existing=args.resume,
         )
 
         logger.info("Processing complete!")

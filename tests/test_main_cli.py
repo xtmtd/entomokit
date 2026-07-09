@@ -258,7 +258,7 @@ def test_version_flag_prints_package_version_long(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.3.0"
+    assert out.strip() == "entomokit 0.4.0"
 
 
 def test_version_flag_prints_package_version_short(
@@ -272,4 +272,31 @@ def test_version_flag_prints_package_version_short(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.3.0"
+    assert out.strip() == "entomokit 0.4.0"
+
+
+def test_get_version_returns_current():
+    from entomokit.main import _get_version
+    assert _get_version() == "0.4.0"
+
+
+def test_bash_falls_back_to_files():
+    from entomokit.completion import render_completion_script
+
+    script = render_completion_script("bash")
+    assert "complete -o default -F _entomokit_completion entomokit" in script
+
+
+def test_zsh_calls_files_fallback():
+    from entomokit.completion import render_completion_script
+
+    script = render_completion_script("zsh")
+    assert "_files" in script
+
+
+def test_fish_no_global_no_files_flag():
+    from entomokit.completion import render_completion_script
+
+    script = render_completion_script("fish")
+    first_line = script.splitlines()[0]
+    assert "-f" not in first_line

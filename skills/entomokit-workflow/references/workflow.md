@@ -3,6 +3,7 @@
 ## Phase 0 - Environment
 
 1. Run `entomokit doctor`.
+1b. Optionally run `entomokit update --check` to confirm the installed version is current.
 2. If core deps missing, offer conda/venv/global install options.
 3. If optional deps missing, explain impacted commands.
 4. If multiple compute backends are available, record options for later `classify train` device confirmation.
@@ -76,6 +77,11 @@ Measure note:
 - Before and after `measure`, remind user that body length/width are estimates from mask geometry and can deviate when appendages dominate, masks touch borders, or foreground is broken/merged.
 - Always report `metrics.csv`, `metrics_summary.csv`, and `metric_definitions.csv` paths after completion.
 
+Output directory note for Phase 1 commands (segment, measure, synthesize, augment, clean, extract-frames):
+- Default: non-empty `--out-dir` causes an error — use a fresh path or pass `--resume`/`--overwrite`.
+- `--resume`: continue an interrupted run by skipping already-processed items.
+- `--overwrite`: wipe `--out-dir` and start fresh.
+
 ## Phase 2 - Split Preparation
 
 1. Teach expected CSV format (`image,label`).
@@ -86,6 +92,7 @@ Measure note:
    - optional: explicit `train + val + test`.
 5. State and confirm split ratios before `split-csv`.
 6. Run `split-csv` and show split summary.
+7. Default: non-empty `--out-dir` causes an error — use a fresh path or pass `--overwrite` to regenerate.
 
 ## Phase 3 - Classification
 
@@ -94,6 +101,10 @@ Measure note:
 3. After train completes, present headline metrics and artifact paths; wait for approval before any next sub-step.
 4. Optionally run `predict`, `evaluate`, `embed`, `cam`, `export-onnx` only after explicit approval.
 5. Ask continue/rerun/stop between sub-steps.
+
+Output directory note for Phase 3 commands:
+- Default: non-empty `--out-dir` causes an error — use a fresh path or pass `--overwrite` to start fresh.
+- `classify train` additionally supports `--resume` (continue checkpoint training into an existing directory).
 
 ## Demo Disclosure
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -300,10 +300,18 @@ def _summary_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def run_batch(
-    mask_dir: Path, out_dir: Path, pixel_size_um: float | None
+    mask_dir: Path, out_dir: Path, pixel_size_um: float | None,
+    existing_rows: list[dict[str, str]] | None = None,
+    shutdown_flag: Callable[[], bool] | None = None,
 ) -> dict[str, int]:
-    files = iter_mask_files(mask_dir)
-    rows = [measure_one_mask(path, pixel_size_um=pixel_size_um) for path in files]
+    existing_rows = existing_rows or []
+    skip_set = {Path(row["file_name"]).stem for row in existing_rows if row.get("file_name")}
+    files = [p for p in iter_mask_files(mask_dir) if p.stem not in skip_set]
+    rows = [*existing_rows]
+    for path in files:
+        if shutdown_flag is not None and shutdown_flag():
+            break
+        rows.append(measure_one_mask(path, pixel_size_um=pixel_size_um))
     if not rows:
         rows = [
             {

@@ -125,6 +125,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Enable verbose logging.",
     )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip target images already synthesised in --out-dir and continue a previous run.",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and start fresh.",
+    )
     p.set_defaults(func=run)
 
 
@@ -136,11 +146,15 @@ def run(args: argparse.Namespace) -> None:
 
     from src.common.cli import (
         setup_shutdown_handler,
+        get_shutdown_flag,
+        reset_shutdown_flag,
         setup_logging,
         save_log,
+        check_output_dir,
     )
     from src.synthesis.processor import SynthesisProcessor
 
+    reset_shutdown_flag()
     setup_shutdown_handler()
 
     max_threads = os.cpu_count() or 8
@@ -173,7 +187,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     output_dir = Path(args.out_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(output_dir, args.resume, args.overwrite)
 
     logger = setup_logging(output_dir, verbose=args.verbose)
     save_log(output_dir, args)
@@ -209,6 +223,8 @@ def run(args: argparse.Namespace) -> None:
             num_syntheses=args.num_syntheses,
             disable_tqdm=False,
             threads=args.threads,
+            skip_existing=args.resume,
+            shutdown_flag=get_shutdown_flag(),
         )
 
         logger.info("Processing complete!")

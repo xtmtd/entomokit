@@ -71,14 +71,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Enable verbose progress output.",
     )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue into a non-empty output directory without error.",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and start fresh.",
+    )
     p.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> None:
     from pathlib import Path
-    from src.common.cli import setup_shutdown_handler, save_log
+    from src.common.cli import setup_shutdown_handler, save_log, check_output_dir, reset_shutdown_flag
     from src.cleaning.processor import ImageCleaner
 
+    reset_shutdown_flag()
     setup_shutdown_handler()
 
     input_dir = Path(args.input_dir)
@@ -91,7 +102,7 @@ def run(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, args.resume, args.overwrite)
     images_subdir = out_dir / "cleaned_images"
     images_subdir.mkdir(parents=True, exist_ok=True)
     save_log(out_dir, args)

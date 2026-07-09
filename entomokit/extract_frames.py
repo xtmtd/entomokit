@@ -58,9 +58,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Extraction interval in milliseconds.",
     )
     p.add_argument(
-        "--skip-existing",
+        "--resume",
         action="store_true",
-        help="Skip frames that already exist (resume).",
+        help="Skip frames already present in --out-dir (continue a previous run).",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and start fresh.",
     )
     p.add_argument(
         "--verbose",
@@ -80,14 +85,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(args: argparse.Namespace) -> None:
     import logging
     from pathlib import Path
-    from src.common.cli import setup_shutdown_handler, save_log
+    from src.common.cli import setup_shutdown_handler, save_log, check_output_dir, reset_shutdown_flag
     from src.framing.extractor import VideoFrameExtractor
 
+    reset_shutdown_flag()
     setup_shutdown_handler()
 
     input_path = Path(args.input_dir)
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, args.resume, args.overwrite)
     save_log(out_dir, args)
 
     # Accept single video file OR directory

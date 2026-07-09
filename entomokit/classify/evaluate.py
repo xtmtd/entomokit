@@ -64,6 +64,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="CPU threads for PyTorch/ONNX runtime (0 = auto).",
     )
     p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and re-evaluate.",
+    )
+    p.add_argument(
         "--device",
         default="auto",
         choices=["auto", "cpu", "cuda", "mps"],
@@ -74,11 +79,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> None:
     from src.classification.utils import select_device, ag_device_map
-    from src.common.cli import save_log
+    from src.common.cli import check_output_dir, save_log
     from src.classification.evaluator import write_evaluation_outputs
 
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     save_log(out_dir, args)
 
     device = select_device(args.device)

@@ -4,7 +4,7 @@
 
 一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、形态学测量、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
 
-当前仓库版本：`0.3.0`。
+当前仓库版本：`0.4.0`。
 
 ## 概述
 
@@ -30,6 +30,7 @@ entomokit <command> [options]
 | `classify cam` | 生成 GradCAM 热力图 |
 | `classify export-onnx` | 导出模型为 ONNX 格式 |
 | `doctor` | 诊断环境与缺失依赖 |
+| `update` | 从 GitHub 检查更新并可选地安装最新版本 |
 
 ## 功能特性
 
@@ -122,10 +123,26 @@ https://auto.gluon.ai/stable/install.html
 
 ### 安装分割功能支持
 
-用于基于 SAM3 的分割：
+用于基于 SAM3 的分割（同时覆盖合成标注输出）：
 
 ```bash
 pip install -e ".[segmentation]"
+```
+
+### 安装合成功能支持
+
+用于 `entomokit synthesize`（多边形简化、COCO 标注输出）：
+
+```bash
+pip install -e ".[synthesis]"
+```
+
+### 安装测量功能支持
+
+用于 `entomokit measure`（形态学指标、骨架计算）：
+
+```bash
+pip install -e ".[measurement]"
 ```
 
 ### 安装视频处理支持
@@ -155,7 +172,7 @@ pip install -e ".[augment]"
 ### 开发环境安装
 
 ```bash
-pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
+pip install -e ".[dev,classify,segmentation,synthesis,measurement,video,cleaning,augment]"
 ```
 
 ## Shell Completion
@@ -199,8 +216,11 @@ entomokit completion fish --install
 │   ├── augment.py          # entomokit augment
 │   ├── split_csv.py        # entomokit split-csv
 │   ├── doctor.py           # entomokit doctor
+│   ├── update.py           # entomokit update
 │   ├── completion.py       # shell 补全脚本生成
+│   ├── _version.py         # 版本与提交元数据
 │   ├── help_style.py       # Rich 帮助格式化
+│   ├── workflow_gate.py    # 受保护的工作流执行器
 │   └── classify/           # entomokit classify *
 │       ├── train.py
 │       ├── predict.py
@@ -347,6 +367,8 @@ entomokit segment \
 | `--annotation-format` | `coco`、`voc`、`yolo` | 无 |
 | `--coco-bbox-format` | `xywh`、`xyxy` | `xywh` |
 | `--threads` | 并行工作线程数 | 8 |
+| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 **输出结构（COCO 示例）：**
 ```
@@ -403,6 +425,8 @@ entomokit measure \
 | `--pixel-size-um` | 像素尺寸（`um/px`，微米每像素） | 无 |
 | `--threads`, `-n` | 预留并行线程数（当前用于参数兼容） | 8 |
 | `--verbose`, `-v` | 启用详细日志 | 否 |
+| `--resume` | 追加新掩码的测量结果；跳过 `metrics.csv` 中已有的记录 | 否 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 **输出文件：**
 ```
@@ -450,6 +474,8 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--threads` | 并行线程数 | 8 |
 | `--max-frames` | 每个视频最大帧数 | 全部 |
+| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 **支持的视频格式**：mp4、mov、avi、mkv、webm、flv、m4v、mpeg、mpg、wmv、3gp、ts
 
@@ -487,6 +513,8 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--keep-exif` | 保留 EXIF 元数据 | 否 |
 | `--threads` | 并行线程数 | 12 |
+| `--resume` | 允许进入非空输出目录，不报错 | 否 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 ---
 
@@ -515,6 +543,8 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 | `--policy` | 自定义策略 JSON 路径（与 `--preset` 互斥） | 无 |
 | `--seed` | 随机种子 | 42 |
 | `--multiply` | 每张输入图生成的增强副本数量 | 1 |
+| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 **输出：**
 ```
@@ -566,6 +596,7 @@ entomokit split-csv --raw-image-csv data/images.csv \
 | `--copy-images` | 复制图像到划分子目录 | 否 |
 | `--images-dir` | 源图像目录（用于复制） | 无 |
 | `--seed` | 随机种子 | 42 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新生成所有划分 | 否 |
 
 **输出：**
 ```
@@ -638,6 +669,8 @@ entomokit synthesize \
 | `--area-ratio-min` | 最小目标/背景面积比 | 0.05 |
 | `--area-ratio-max` | 最大目标/背景面积比 | 0.20 |
 | `--threads` | 并行工作线程数 | 4 |
+| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 **输出（COCO）：**
 ```
@@ -734,6 +767,7 @@ entomokit classify train \
 | `--device` | `auto/cpu/cuda/mps` | `auto` |
 | `--batch-size` | 批量大小 | 32 |
 | `--num-workers` | DataLoader 工作线程数 | 4 |
+| `--overwrite` | 删除 `--out-dir` 内容并重新训练 | 否 |
 
 **数据增强预设**：
 | 预设 | 变换 |
@@ -776,6 +810,8 @@ entomokit classify predict \
 - 如果 CSV 的 `image` 值是文件名/相对路径，还需提供 `--images-dir`
 - 如果只提供 `--images-dir`，则预测该目录下的所有图像
 
+使用 `--overwrite` 可删除 `--out-dir` 内容并重新预测所有输入。
+
 **ONNX 要求**：
 ```bash
 pip install onnxruntime
@@ -814,6 +850,8 @@ entomokit classify evaluate \
 - `per_class_metrics.csv`：每类 precision、recall、F1、support
 - `confusion_matrix.pdf`：当类别数较少、图仍可读时导出的热图 PDF
 
+使用 `--overwrite` 可删除 `--out-dir` 内容并重新评估。
+
 ---
 
 #### `classify embed`
@@ -841,6 +879,8 @@ entomokit classify embed \
 - `embeddings.csv` — 特征向量（feat_0, feat_1, ...）
 - `metrics.csv` — 质量指标
 - `umap.pdf` — UMAP 可视化（使用 `--visualize`）
+
+使用 `--overwrite` 可删除 `--out-dir` 内容并重新提取嵌入。
 
 **质量指标**：
 | 指标 | 描述 |
@@ -899,6 +939,8 @@ entomokit classify cam \
 
 **注意**：不支持 ONNX 模型（需要 PyTorch hooks）。
 
+使用 `--overwrite` 可删除 `--out-dir` 内容并重新生成 CAM 可视化。
+
 ---
 
 #### `classify export-onnx`
@@ -924,6 +966,8 @@ entomokit classify export-onnx \
 - `model.onnx` — ONNX 模型文件
 - `label_classes.json` — 类别标签映射
 
+使用 `--overwrite` 可删除 `--out-dir` 内容并重新导出 ONNX 模型。
+
 ---
 
 ### doctor 命令
@@ -937,7 +981,24 @@ entomokit doctor
 报告内容包括：
 - Python 版本与可用设备（`cpu`、`cuda`、`mps`）
 - 关键依赖的版本与状态（ok/missing/outdated）
-- 安装/升级建议（包含 `autogluon.multimodal>=1.4.0`）
+- 安装/升级建议（包含 `autogluon.multimodal>=1.5.0`）
+
+---
+
+### update 命令
+
+从 GitHub 检查更新并可选地安装最新版本。
+
+```bash
+entomokit update           # 检查并提示
+entomokit update --check   # 仅检查，不安装
+entomokit update --yes     # 安装，不提示
+```
+
+| 参数 | 描述 | 默认值 |
+|-----------|-------------|---------|
+| `--check` | 仅显示版本信息；不安装 | 否 |
+| `--yes`, `-y` | 跳过确认提示 | 否 |
 
 ---
 
@@ -969,7 +1030,9 @@ entomokit doctor
 安装 entomokit 的 shell 补全：
 
 ```bash
-entomokit --install-completion
+entomokit completion bash --install
+entomokit completion zsh --install
+entomokit completion fish --install
 ```
 
 支持的 shell：bash、zsh、fish

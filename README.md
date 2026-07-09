@@ -4,7 +4,7 @@
 
 A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, morphology measurement, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
 
-Current release in this repository: `0.3.0`.
+Current release in this repository: `0.4.0`.
 
 ## Overview
 
@@ -30,6 +30,7 @@ entomokit <command> [options]
 | `classify cam` | Generate GradCAM heatmaps |
 | `classify export-onnx` | Export model to ONNX format |
 | `doctor` | Diagnose environment and missing dependencies |
+| `update` | Check for updates and optionally install the latest version from GitHub |
 
 ## Features
 
@@ -122,10 +123,26 @@ https://auto.gluon.ai/stable/install.html
 
 ### With Segmentation Support
 
-For SAM3-based segmentation:
+For SAM3-based segmentation (also covers synthesis annotation output):
 
 ```bash
 pip install -e ".[segmentation]"
+```
+
+### With Synthesis Support
+
+For `entomokit synthesize` (polygon simplification, COCO annotation output):
+
+```bash
+pip install -e ".[synthesis]"
+```
+
+### With Measurement Support
+
+For `entomokit measure` (morphology metrics, skeleton computation):
+
+```bash
+pip install -e ".[measurement]"
 ```
 
 ### With Video Processing
@@ -155,7 +172,7 @@ pip install -e ".[augment]"
 ### Development Installation
 
 ```bash
-pip install -e ".[dev,classify,segmentation,video,cleaning,augment]"
+pip install -e ".[dev,classify,segmentation,synthesis,measurement,video,cleaning,augment]"
 ```
 
 ## Shell Completion
@@ -199,8 +216,11 @@ Notes:
 │   ├── augment.py          # entomokit augment
 │   ├── split_csv.py        # entomokit split-csv
 │   ├── doctor.py           # entomokit doctor
+│   ├── update.py           # entomokit update
 │   ├── completion.py       # shell completion script generation
+│   ├── _version.py         # version + commit metadata
 │   ├── help_style.py       # Rich help formatting
+│   ├── workflow_gate.py    # guarded workflow executor
 │   └── classify/           # entomokit classify *
 │       ├── train.py
 │       ├── predict.py
@@ -347,6 +367,8 @@ entomokit segment \
 | `--annotation-format` | `coco`, `voc`, `yolo` | None |
 | `--coco-bbox-format` | `xywh`, `xyxy` | `xywh` |
 | `--threads` | Parallel workers | 8 |
+| `--resume` | Skip images already present in `--out-dir` (continue previous run) | No |
+| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 **Output structure (COCO example):**
 ```
@@ -392,6 +414,8 @@ entomokit measure \
 | `--pixel-size-um` | Pixel size in micrometers per pixel (`um/px`) | None |
 | `--threads`, `-n` | Reserved worker count for future parallel processing | 8 |
 | `--verbose`, `-v` | Enable verbose logging | No |
+| `--resume` | Append measurements for new masks; skip masks already in `metrics.csv` | No |
+| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 **Outputs:**
 ```
@@ -439,6 +463,8 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--threads` | Parallel threads | 8 |
 | `--max-frames` | Max frames per video | All |
+| `--resume` | Skip frames already present in `--out-dir` (continue previous run) | No |
+| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 **Supported video formats**: mp4, mov, avi, mkv, webm, flv, m4v, mpeg, mpg, wmv, 3gp, ts
 
@@ -476,6 +502,8 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--keep-exif` | Preserve EXIF metadata | No |
 | `--threads` | Parallel threads | 12 |
+| `--resume` | Continue into a non-empty `--out-dir` without error | No |
+| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 ---
 
@@ -504,6 +532,8 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 | `--policy` | Custom policy JSON path (exclusive with `--preset`) | None |
 | `--seed` | Random seed for reproducibility | 42 |
 | `--multiply` | Augmented copies per input image | 1 |
+| `--resume` | Skip source images already augmented in `--out-dir` | No |
+| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 **Output:**
 ```
@@ -555,6 +585,7 @@ entomokit split-csv --raw-image-csv data/images.csv \
 | `--copy-images` | Copy images into split subdirs | No |
 | `--images-dir` | Source images dir (for copy) | None |
 | `--seed` | Random seed | 42 |
+| `--overwrite` | Delete `--out-dir` contents and regenerate all splits | No |
 
 **Output:**
 ```
@@ -627,6 +658,8 @@ entomokit synthesize \
 | `--area-ratio-min` | Min target/background area ratio | 0.05 |
 | `--area-ratio-max` | Max target/background area ratio | 0.20 |
 | `--threads` | Parallel workers | 4 |
+| `--resume` | Skip target images already synthesised in `--out-dir` | No |
+| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 **Output (COCO):**
 ```
@@ -723,6 +756,7 @@ entomokit classify train \
 | `--device` | `auto/cpu/cuda/mps` | `auto` |
 | `--batch-size` | Batch size | 32 |
 | `--num-workers` | DataLoader workers | 4 |
+| `--overwrite` | Delete `--out-dir` contents and train from scratch | No |
 
 **Augmentation presets**:
 | Preset | Transforms |
@@ -765,6 +799,8 @@ entomokit classify predict \
 - If CSV `image` values are names/relative paths, also provide `--images-dir`
 - If only `--images-dir` is given, all images in that directory are predicted
 
+Pass `--overwrite` to delete `--out-dir` contents and re-predict all inputs.
+
 **ONNX requirements**:
 ```bash
 pip install onnxruntime
@@ -803,6 +839,8 @@ entomokit classify evaluate \
 - `per_class_metrics.csv` — Per-class precision, recall, F1, support
 - `confusion_matrix.pdf` — Heatmap PDF when class count is small enough to stay readable
 
+Pass `--overwrite` to delete `--out-dir` contents and re-evaluate.
+
 ---
 
 #### `classify embed`
@@ -830,6 +868,8 @@ entomokit classify embed \
 - `embeddings.csv` — Feature vectors (feat_0, feat_1, ...)
 - `metrics.csv` — Quality metrics
 - `umap.pdf` — UMAP visualization (with `--visualize`)
+
+Pass `--overwrite` to delete `--out-dir` contents and re-extract embeddings.
 
 **Quality metrics**:
 | Metric | Description |
@@ -888,6 +928,8 @@ entomokit classify cam \
 
 **Note**: ONNX models not supported (requires PyTorch hooks).
 
+Pass `--overwrite` to delete `--out-dir` contents and regenerate CAM visualizations.
+
 ---
 
 #### `classify export-onnx`
@@ -913,6 +955,8 @@ entomokit classify export-onnx \
 - `model.onnx` — ONNX model file
 - `label_classes.json` — Class label mapping
 
+Pass `--overwrite` to delete `--out-dir` contents and re-export the ONNX model.
+
 ---
 
 ### Doctor Command
@@ -926,7 +970,24 @@ entomokit doctor
 The report includes:
 - Python and available devices (`cpu`, `cuda`, `mps`)
 - Key package versions and status (ok/missing/outdated)
-- Install/upgrade recommendations (including `autogluon.multimodal>=1.4.0`)
+- Install/upgrade recommendations (including `autogluon.multimodal>=1.5.0`)
+
+---
+
+### Update Command
+
+Check whether a newer version is available on GitHub and optionally install it.
+
+```bash
+entomokit update           # check and prompt
+entomokit update --check   # check only, no install
+entomokit update --yes     # install without prompt
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--check` | Only show version info; do not install | No |
+| `--yes`, `-y` | Skip confirmation prompt | No |
 
 ---
 
@@ -958,7 +1019,9 @@ Press `Ctrl+C` — the current image finishes before exiting; partial results ar
 Install shell completion for entomokit:
 
 ```bash
-entomokit --install-completion
+entomokit completion bash --install
+entomokit completion zsh --install
+entomokit completion fish --install
 ```
 
 Supported shells: bash, zsh, fish

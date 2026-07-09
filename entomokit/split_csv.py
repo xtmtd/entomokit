@@ -104,6 +104,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Copy images into out_dir/images/{split}/ subdirectories.",
     )
     p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and regenerate all splits.",
+    )
+    p.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -114,7 +119,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> None:
     from pathlib import Path
-    from src.common.cli import setup_shutdown_handler, save_log
+    from src.common.cli import check_output_dir, setup_shutdown_handler, save_log
     from src.splitting.splitter import DatasetSplitter
 
     setup_shutdown_handler()
@@ -132,7 +137,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     save_log(out_dir, args)
 
     splitter = DatasetSplitter(

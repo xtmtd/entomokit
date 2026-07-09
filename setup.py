@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="entomokit",
-    version="0.3.0",
+    version="0.4.0",
     description="A Python toolkit for building insect image datasets with segmentation, frame extraction, cleaning, dataset splitting, and image synthesis capabilities",
     author="Feng ZHANG",
     author_email="xtmtd.zf@gmail.com",
@@ -20,11 +20,19 @@ setup(
             "torchvision>=0.15.0",
             "opencv-python>=4.8.0",
             "scikit-image>=0.21.0",
+            "scipy>=1.10.0",
             "iopath",
             "huggingface-hub",
             "einops",
             "pycocotools",
             "ftfy",
+        ],
+        "synthesis": [
+            "supervision>=0.22.0",
+            "scipy>=1.10.0",
+        ],
+        "measurement": [
+            "scipy>=1.10.0",
         ],
         "cleaning": [
             "imagehash",
@@ -40,10 +48,11 @@ setup(
             "albumentations>=1.4.0",
         ],
         "classify": [
-            "autogluon.multimodal>=1.4.0",
+            "autogluon.multimodal>=1.5.0",
             "timm>=0.9.0",
             "umap-learn",
             "matplotlib",
+            "seaborn",
             "grad-cam",
             "onnxruntime",
             "scikit-learn",

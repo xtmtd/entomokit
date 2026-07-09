@@ -55,6 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
     from entomokit import measure as _measure
     from entomokit import doctor as _doctor
     from entomokit import completion as _completion
+    from entomokit import update as _update
     from entomokit.classify import register as _register_classify
 
     _extract_frames.register(subparsers)
@@ -66,6 +67,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _split_csv.register(subparsers)
     _register_classify(subparsers)
     _doctor.register(subparsers)
+    _update.register(subparsers)
     _completion.register(subparsers)
 
     return parser
@@ -82,7 +84,7 @@ def _get_version() -> str:
     try:
         return importlib.metadata.version("entomokit")
     except importlib.metadata.PackageNotFoundError:
-        return "0.3.0"
+        return "0.4.0"
 
 
 def main(argv: list[str] | None = None) -> None:

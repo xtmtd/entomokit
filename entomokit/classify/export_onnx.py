@@ -26,6 +26,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--out-dir", required=True, help="Output directory for model.onnx.")
     p.add_argument("--opset", type=int, default=17, help="ONNX opset version.")
     p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and re-export ONNX model.",
+    )
+    p.add_argument(
         "--sample-image",
         default=None,
         help="Optional image path for ONNX trace input (default: auto-generated temp image).",
@@ -36,9 +41,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(args: argparse.Namespace) -> None:
     from pathlib import Path
     from src.classification.exporter import export_onnx
-    from src.common.cli import save_log
+    from src.common.cli import check_output_dir, save_log
 
     out_dir = Path(args.out_dir)
+    check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     save_log(out_dir, args)
 
     onnx_path = export_onnx(

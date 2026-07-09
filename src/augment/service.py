@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import cv2
 
@@ -37,6 +37,8 @@ def run_augment(
     seed: int = 42,
     multiply: int = 1,
     args: Optional[dict] = None,
+    skip_existing: bool = False,
+    shutdown_flag: Optional[Callable[[], bool]] = None,
 ) -> AugmentResult:
     """Run augmentation on an image directory."""
     src = Path(input_dir)
@@ -63,6 +65,10 @@ def run_augment(
     processed_count = 0
 
     for img_path in image_paths:
+        if shutdown_flag is not None and shutdown_flag():
+            break
+        if skip_existing and any(images_out.glob(f"{img_path.stem}*")):
+            continue
         img_array = cv2.imread(str(img_path))
         if img_array is None:
             continue

@@ -64,6 +64,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="CPU threads for PyTorch/ONNX runtime (0 = auto).",
     )
     p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete --out-dir contents and re-predict all inputs.",
+    )
+    p.add_argument(
         "--device",
         default="auto",
         choices=["auto", "cpu", "cuda", "mps"],
@@ -133,9 +138,10 @@ def _resolve_predict_inputs(
 
 def run(args: argparse.Namespace) -> None:
     from src.classification.utils import select_device, ag_device_map
-    from src.common.cli import save_log
+    from src.common.cli import check_output_dir, save_log
 
     out_dir = Path(args.out_dir)
+    check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     pred_dir = out_dir / "predictions"
     pred_dir.mkdir(parents=True, exist_ok=True)
     save_log(out_dir, args)

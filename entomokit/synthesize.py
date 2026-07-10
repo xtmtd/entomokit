@@ -228,7 +228,10 @@ def run(args: argparse.Namespace) -> None:
         )
 
         logger.info("Processing complete!")
-        logger.info(f"  Successfully processed: {results['processed']}")
+        total_processed = results["processed"] + results.get("skipped", 0)
+        logger.info(f"  Successfully processed: {total_processed}")
+        if results.get("skipped"):
+            logger.info(f"    (skipped {results['skipped']} already-existing syntheses)")
         logger.info(f"  Failed: {results['failed']}")
         logger.info(f"  Output files: {results['output_files']}")
 

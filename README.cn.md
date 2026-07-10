@@ -4,8 +4,6 @@
 
 一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、形态学测量、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
 
-当前仓库版本：`0.4.0`。
-
 ## 概述
 
 所有功能通过单一入口访问：
@@ -48,7 +46,7 @@ entomokit <command> [options]
 - **类别级评估诊断**：`classify evaluate` 会输出混淆矩阵、按真实类别归一化的召回矩阵、每类 precision/recall/F1，以及类数较少时的混淆矩阵 PDF
 - **环境诊断**：`doctor` 命令输出依赖状态并给出安装/升级建议
 - **嵌入质量指标**：NMI、ARI、Recall@K、kNN 准确率、mAP@R、轮廓系数、UMAP 可视化
-- **并行处理**：多线程图像处理，可配置工作线程数
+- **并行分割**：Otsu/GrabCut 方法通过 `--threads` 并行处理图像；SAM3 使用单模型串行路径
 - **完整日志**：详细日志记录，支持详细模式和日志文件输出
 - **AI 助手集成**：`entomokit-workflow` skill 支持在 OpenCode、Claude Code、Codex 等工具中进行引导式对话工作流
 
@@ -366,7 +364,7 @@ entomokit segment \
 | `--lama-model` | LaMa 模型目录 | 无 |
 | `--annotation-format` | `coco`、`voc`、`yolo` | 无 |
 | `--coco-bbox-format` | `xywh`、`xyxy` | `xywh` |
-| `--threads` | 并行工作线程数 | 8 |
+| `--threads` | Otsu/GrabCut 并行图像工作线程数（默认: 8）；SAM3 保持串行 | 8 |
 | `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
 | `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
@@ -423,7 +421,6 @@ entomokit measure \
 | `--mask-dir`, `-i` | 输入掩码目录 | 必填 |
 | `--out-dir`, `-o` | 输出目录 | 必填 |
 | `--pixel-size-um` | 像素尺寸（`um/px`，微米每像素） | 无 |
-| `--threads`, `-n` | 预留并行线程数（当前用于参数兼容） | 8 |
 | `--verbose`, `-v` | 启用详细日志 | 否 |
 | `--resume` | 追加新掩码的测量结果；跳过 `metrics.csv` 中已有的记录 | 否 |
 | `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |

@@ -9,6 +9,15 @@ from pathlib import Path
 from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
 
 
+def _positive_int(value: str) -> int:
+    ival = int(value)
+    if ival <= 0:
+        raise argparse.ArgumentTypeError(
+            f"invalid positive int value: {value!r}"
+        )
+    return ival
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "segment",
@@ -92,9 +101,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--threads",
         "-n",
-        type=int,
+        type=_positive_int,
         default=8,
-        help="Number of parallel workers.",
+        help="Concurrent image workers for Otsu/GrabCut methods (default: 8); SAM3 remains serial.",
     )
     # --- Annotation output ---
     p.add_argument(
@@ -192,6 +201,11 @@ def run(args: argparse.Namespace) -> None:
         constructor_kwargs["coco_bbox_format"] = args.coco_bbox_format
 
     logger.info("Starting segmentation process")
+    if args.segmentation_method in {"sam3", "sam3-bbox"} and args.threads > 1:
+        logger.info(
+            "--threads=%s ignored for SAM3: single-model inference remains serial.",
+            args.threads,
+        )
     try:
         processor = SegmentationProcessor(**constructor_kwargs)
     except Exception:
@@ -210,7 +224,10 @@ def run(args: argparse.Namespace) -> None:
         )
 
         logger.info("Processing complete!")
-        logger.info(f"  Successfully processed: {results['processed']}")
+        total_processed = results["processed"] + results.get("skipped", 0)
+        logger.info(f"  Successfully processed: {total_processed}")
+        if results.get("skipped"):
+            logger.info(f"    (skipped {results['skipped']} already-existing images)")
         logger.info(f"  Failed: {results['failed']}")
         logger.info(f"  Output files: {len(results['output_files'])}")
 

@@ -132,6 +132,9 @@ def run(args: argparse.Namespace) -> None:
     stats = extractor.extract_all(show_progress=not args.quiet)
 
     if not args.quiet:
+        total_frames = stats["total_frames"] + stats.get("skipped_frames", 0)
         print(f"Total videos processed: {stats['total_videos']}")
-        print(f"Total frames extracted: {stats['total_frames']}")
+        print(f"Total frames extracted: {total_frames}")
+        if stats.get("skipped_frames"):
+            print(f"  (skipped {stats['skipped_frames']} already-existing frames)")
         print(f"Errors: {stats['errors']}")

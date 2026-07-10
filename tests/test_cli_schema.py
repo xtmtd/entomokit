@@ -27,3 +27,11 @@ def test_clean_schema_contains_required_and_enum_metadata() -> None:
 
 def test_unknown_command_schema_returns_none() -> None:
     assert get_command_schema("not-a-command") is None
+
+
+def test_measure_schema_excludes_threads() -> None:
+    schema = get_command_schema("measure")
+    assert schema is not None
+    names = {item["name"] for item in schema["parameters"]}
+    assert "--threads" not in names
+    assert "-n" not in names

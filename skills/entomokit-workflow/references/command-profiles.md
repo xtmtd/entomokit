@@ -31,6 +31,7 @@
   - `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
 - `--sam3-checkpoint` is required only for `sam3` and `sam3-bbox`.
 - For faster RGB crop output without alpha mask, recommend `otsu-bbox` or `grabcut-bbox`.
+- `--threads` controls concurrent image workers for Otsu/GrabCut methods (default: 8). SAM3/SAM3-bbox use a single stateful predictor and remain serial on all devices (CPU, CUDA, MPS). For CPU methods, recommend starting near half the logical CPU count to avoid OpenCV oversubscription, then benchmarking.
 - If user requests unsupported methods, mark unsupported and recommend nearest supported method.
 - Non-empty `--out-dir` requires `--resume` (skip already-segmented images) or `--overwrite`; default exits with an error.
 
@@ -39,7 +40,6 @@
 - Use for morphology metrics from segmentation masks.
 - Required params: `--mask-dir`, `--out-dir`.
 - Optional scale: `--pixel-size-um` with unit `um/px` (micrometers per pixel).
-- Keep `--threads` visible in card (default `8`; reserved for parallel processing compatibility).
 - Explicitly remind users that `body_length`/`body_width` are mask-geometry estimates and may be biased by appendages, border clipping, or merged/fragmented masks.
 - After run, always summarize:
   - `metrics.csv` (per-image metrics + warn reasons),

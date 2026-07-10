@@ -128,7 +128,7 @@ def test_clean_exits_on_nonempty(tmp_path):
 def _measure_args(**kw):
     d = dict(
         mask_dir="/nonexistent", out_dir="/tmp/meas_out",
-        pixel_size_um=None, threads=1, verbose=False,
+        pixel_size_um=None, verbose=False,
         resume=False, overwrite=False,
     )
     d.update(kw)

@@ -4,8 +4,6 @@
 
 A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, morphology measurement, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
 
-Current release in this repository: `0.4.0`.
-
 ## Overview
 
 All functionality is accessed through a single entry point:
@@ -48,7 +46,7 @@ entomokit <command> [options]
 - **Per-Class Evaluation Diagnostics**: `classify evaluate` writes confusion matrices, normalized recall matrix, per-class precision/recall/F1, and a confusion PDF for small label sets
 - **Environment Diagnostics**: `doctor` command reports missing/outdated dependencies and install suggestions
 - **Embedding Quality Metrics**: NMI, ARI, Recall@K, kNN accuracy, mAP@R, Silhouette, UMAP visualization
-- **Parallel Processing**: Multi-threaded image processing with configurable worker count
+- **Concurrent Segmentation**: Otsu/GrabCut methods process images concurrently via `--threads`; SAM3 uses a single-model serial path
 - **Comprehensive Logging**: Detailed logging with verbose mode and log file output
 - **AI Assistant Integration**: `entomokit-workflow` skill for guided conversational workflows with OpenCode, Claude Code, Codex, etc.
 
@@ -366,7 +364,7 @@ entomokit segment \
 | `--lama-model` | LaMa model directory | None |
 | `--annotation-format` | `coco`, `voc`, `yolo` | None |
 | `--coco-bbox-format` | `xywh`, `xyxy` | `xywh` |
-| `--threads` | Parallel workers | 8 |
+| `--threads` | Concurrent image workers for Otsu/GrabCut (default: 8); SAM3 remains serial | 8 |
 | `--resume` | Skip images already present in `--out-dir` (continue previous run) | No |
 | `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
@@ -412,7 +410,6 @@ entomokit measure \
 | `--mask-dir`, `-i` | Input mask directory | Required |
 | `--out-dir`, `-o` | Output directory | Required |
 | `--pixel-size-um` | Pixel size in micrometers per pixel (`um/px`) | None |
-| `--threads`, `-n` | Reserved worker count for future parallel processing | 8 |
 | `--verbose`, `-v` | Enable verbose logging | No |
 | `--resume` | Append measurements for new masks; skip masks already in `metrics.csv` | No |
 | `--overwrite` | Delete `--out-dir` contents and start fresh | No |

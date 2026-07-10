@@ -32,13 +32,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Pixel size in micrometers per pixel (um/px).",
     )
     p.add_argument(
-        "--threads",
-        "-n",
-        type=int,
-        default=8,
-        help="Reserved worker count for future parallel processing.",
-    )
-    p.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging."
     )
     p.add_argument(

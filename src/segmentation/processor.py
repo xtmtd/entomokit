@@ -4,6 +4,8 @@ import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union, Tuple, Callable, TYPE_CHECKING
 import logging
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
 from src.sam3_wrapper import SAM3Wrapper
@@ -20,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.lama.lama_inpainter import LaMaInpainter
+
+
+@dataclass
+class ImageComputation:
+    image_path: Path
+    image: np.ndarray
+    masks: list
+    scores: list
 
 
 class SegmentationProcessor:
@@ -255,6 +265,47 @@ class SegmentationProcessor:
             logger.exception("GrabCut segmentation failed")
             return []
 
+    def _segment_and_filter(self, image: np.ndarray) -> Tuple[List[np.ndarray], List[float]]:
+        if self.segmentation_method in ["otsu", "otsu-bbox"]:
+            masks = self._segment_with_otsu(image)
+            scores = [1.0] * len(masks)
+        elif self.segmentation_method in ["grabcut", "grabcut-bbox"]:
+            masks = self._segment_with_grabcut(image)
+            scores = [1.0] * len(masks)
+        elif (
+            self.segmentation_method in ["sam3", "sam3-bbox"]
+            and self.sam_wrapper is not None
+        ):
+            masks_with_scores = self.sam_wrapper.predict_with_scores(
+                image, text_prompt=self.hint
+            )
+            masks = masks_with_scores["masks"]
+            scores = masks_with_scores.get("scores", [1.0] * len(masks))
+        else:
+            raise ValueError(
+                f"SAM3 checkpoint required for segmentation method: {self.segmentation_method}"
+            )
+
+        logger.debug(f"Found {len(masks)} object(s)")
+
+        filtered_masks = []
+        filtered_scores = []
+        for mask, score in zip(masks, scores):
+            if score >= self.confidence_threshold:
+                filtered_masks.append(mask)
+                filtered_scores.append(score)
+            else:
+                logger.debug(
+                    f"Filtering mask with score {score:.3f} < {self.confidence_threshold}"
+                )
+
+        return filtered_masks, filtered_scores
+
+    def _compute_image(self, image_path: Path) -> ImageComputation:
+        image = load_image(image_path)
+        masks, scores = self._segment_and_filter(image)
+        return ImageComputation(image_path, image, masks, scores)
+
     def process_image(
         self,
         image: np.ndarray,
@@ -264,7 +315,7 @@ class SegmentationProcessor:
         output_format: str = "png",
     ) -> Dict[str, Any]:
         """
-        Process single image and extract insects.
+        Process single image and extract insects (serial compatibility wrapper).
 
         Args:
             image: Input image array (H, W, 3)
@@ -276,6 +327,19 @@ class SegmentationProcessor:
         Returns:
             Dictionary with processing results
         """
+        filtered_masks, filtered_scores = self._segment_and_filter(image)
+        image_path = Path(base_name)
+        comp = ImageComputation(image_path, image, filtered_masks, filtered_scores)
+        return self._write_computation(comp, output_dir, base_name, original_path, output_format)
+
+    def _write_computation(
+        self,
+        computation: ImageComputation,
+        output_dir: Union[str, Path],
+        base_name: str,
+        original_path: Optional[str] = None,
+        output_format: str = "png",
+    ) -> Dict[str, Any]:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         images_dir = output_dir / "images"
@@ -307,48 +371,11 @@ class SegmentationProcessor:
         ]
         include_segmentation_annotations = not is_bbox_mode
 
-        # Run segmentation based on method
-        if self.segmentation_method in ["otsu", "otsu-bbox"]:
-            masks = self._segment_with_otsu(image)
-            scores = [1.0] * len(masks)
-        elif self.segmentation_method in ["grabcut", "grabcut-bbox"]:
-            masks = self._segment_with_grabcut(image)
-            scores = [1.0] * len(masks)
-            if not masks:
-                logger.warning("GrabCut failed to find any masks")
-                return results
-        elif (
-            self.segmentation_method in ["sam3", "sam3-bbox"]
-            and self.sam_wrapper is not None
-        ):
-            masks_with_scores = self.sam_wrapper.predict_with_scores(
-                image, text_prompt=self.hint
-            )
-            masks = masks_with_scores["masks"]
-            scores = masks_with_scores.get("scores", [1.0] * len(masks))
-        else:
-            raise ValueError(
-                f"SAM3 checkpoint required for segmentation method: {self.segmentation_method}"
-            )
+        filtered_masks = computation.masks
+        filtered_scores = computation.scores
+        image = computation.image
 
-        logger.debug(f"Found {len(masks)} object(s)")
-
-        # Filter masks by confidence threshold
-        filtered_masks = []
-        filtered_scores = []
-        for mask, score in zip(masks, scores):
-            if score >= self.confidence_threshold:
-                filtered_masks.append(mask)
-                filtered_scores.append(score)
-            else:
-                logger.debug(
-                    f"Filtering mask with score {score:.3f} < {self.confidence_threshold}"
-                )
-
-        masks = filtered_masks
-        scores = filtered_scores
-
-        if len(masks) == 0:
+        if len(filtered_masks) == 0:
             logger.warning(
                 f"No masks passed confidence threshold ({self.confidence_threshold})"
             )
@@ -1021,50 +1048,87 @@ class SegmentationProcessor:
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)
 
+        if num_workers <= 0:
+            raise ValueError(f"num_workers must be positive, got {num_workers}")
+
         # Find all images
         image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-        image_paths = [
+        image_paths = sorted(
             p for p in input_dir.iterdir() if p.suffix.lower() in image_extensions
-        ]
+        )
 
         logger.info(f"Found {len(image_paths)} images to process")
 
-        results = {"processed": 0, "failed": 0, "output_files": []}
+        results: Dict[str, Any] = {"processed": 0, "failed": 0, "output_files": []}
 
-        # Process each image
-        for img_path in tqdm(image_paths, desc="Segmenting", disable=disable_tqdm):
-            # Check for shutdown request before processing
-            if shutdown_flag is not None and shutdown_flag():
-                logger.info(
-                    "Shutdown requested. Exiting after completing current image."
-                )
-                break
+        cpu_parallel_methods = {"otsu", "otsu-bbox", "grabcut", "grabcut-bbox"}
+        use_parallel = self.segmentation_method in cpu_parallel_methods and num_workers > 1
 
-            try:
-                # Load image
-                if skip_existing:
-                    images_dir = output_dir / "images"
-                    if any(images_dir.glob(f"{img_path.stem}*")):
-                        results.setdefault("skipped", 0)
-                        results["skipped"] += 1
-                        continue
-                image = load_image(img_path)
+        def _process_single(img_path: Path) -> None:
+            if skip_existing:
+                images_dir_check = output_dir / "images"
+                if any(images_dir_check.glob(f"{img_path.stem}*")):
+                    results.setdefault("skipped", 0)
+                    results["skipped"] += 1
+                    return
+            comp = self._compute_image(img_path)
+            result = self._write_computation(
+                comp,
+                output_dir=output_dir,
+                base_name=img_path.stem,
+                original_path=str(img_path),
+                output_format=output_format,
+            )
+            results["processed"] += 1
+            results["output_files"].extend(result["output_files"])
 
-                # Process
-                result = self.process_image(
-                    image,
-                    output_dir=output_dir,
-                    base_name=img_path.stem,
-                    original_path=str(img_path),
-                    output_format=output_format,
-                )
+        if use_parallel:
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                futures = [
+                    executor.submit(self._compute_image, path)
+                    for path in image_paths
+                ]
+                for img_path, future in zip(image_paths, futures):
+                    if shutdown_flag is not None and shutdown_flag():
+                        logger.info(
+                            "Shutdown requested. Exiting after completing current image."
+                        )
+                        break
 
-                results["processed"] += 1
-                results["output_files"].extend(result["output_files"])
+                    try:
+                        if skip_existing:
+                            images_dir_check = output_dir / "images"
+                            if any(images_dir_check.glob(f"{img_path.stem}*")):
+                                results.setdefault("skipped", 0)
+                                results["skipped"] += 1
+                                continue
+                        comp = future.result()
+                        result = self._write_computation(
+                            comp,
+                            output_dir=output_dir,
+                            base_name=img_path.stem,
+                            original_path=str(img_path),
+                            output_format=output_format,
+                        )
+                        results["processed"] += 1
+                        results["output_files"].extend(result["output_files"])
 
-            except Exception:
-                logger.exception(f"Failed to process {img_path}")
-                results["failed"] += 1
+                    except Exception:
+                        logger.exception(f"Failed to process {img_path}")
+                        results["failed"] += 1
+        else:
+            for img_path in tqdm(image_paths, desc="Segmenting", disable=disable_tqdm):
+                if shutdown_flag is not None and shutdown_flag():
+                    logger.info(
+                        "Shutdown requested. Exiting after completing current image."
+                    )
+                    break
+
+                try:
+                    _process_single(img_path)
+                except Exception:
+                    logger.exception(f"Failed to process {img_path}")
+                    results["failed"] += 1
 
         # Save metadata for COCO mode (unified) — keep segmentation/area fidelity
         if self.annotation_format == "coco" and self.coco_output_mode == "unified":

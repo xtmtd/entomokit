@@ -124,5 +124,8 @@ def run(args: argparse.Namespace) -> None:
         recursive=args.recursive,
     )
 
-    print(f"Done. Processed {results['processed']} images, {results['errors']} errors.")
+    total = results["processed"] + results.get("skipped", 0)
+    print(f"Done. Processed {total} images, {results['errors']} errors.")
+    if results.get("skipped"):
+        print(f"  (skipped {results['skipped']} duplicate images)")
     print(f"Cleaned images saved to: {images_subdir}")

@@ -69,12 +69,17 @@ def test_measure_adds_um_columns_when_scale_provided(tmp_path) -> None:
     assert "area_um2" in row
 
 
-def test_measure_threads_default_is_8() -> None:
+def test_measure_rejects_removed_threads_option() -> None:
+    """--threads should not be accepted by the measure parser."""
+    import pytest
+
     from entomokit.main import _build_parser
 
     parser = _build_parser()
-    args = parser.parse_args(["measure", "--mask-dir", "m", "--out-dir", "o"])
-    assert args.threads == 8
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["measure", "--mask-dir", "m", "--out-dir", "o", "--threads", "2"]
+        )
 
 
 def test_measure_prints_length_width_caution(tmp_path, caplog) -> None:

@@ -164,12 +164,14 @@ pip install -e ".[cleaning]"
 For `entomokit augment`:
 
 ```bash
+uv pip install --only-binary :all: stringzilla
 pip install -e ".[augment]"
 ```
 
 ### Development Installation
 
 ```bash
+uv pip install --only-binary :all: stringzilla
 pip install -e ".[dev,classify,segmentation,synthesis,measurement,video,cleaning,augment]"
 ```
 

@@ -77,6 +77,7 @@ def test_run_accepts_missing_label_csv_and_forwards_dump_flag(
         num_threads=0,
         device="auto",
         dump_model_structure=True,
+        overwrite=False,
     )
 
     cam_cli.run(args)

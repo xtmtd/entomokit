@@ -47,6 +47,30 @@ def test_augment_parser_rejects_preset_and_policy_together() -> None:
         )
 
 
+def test_augment_shows_progress_for_each_input_image(tmp_path, monkeypatch) -> None:
+    pytest = __import__("pytest")
+    pytest.importorskip("albumentations")
+    from PIL import Image
+    from src.augment import service
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    Image.new("RGB", (10, 10)).save(input_dir / "one.png")
+    Image.new("RGB", (10, 10)).save(input_dir / "two.png")
+
+    calls = []
+
+    def fake_tqdm(items, **kwargs):
+        calls.append((list(items), kwargs))
+        return iter(calls[-1][0])
+
+    monkeypatch.setattr(service, "tqdm", fake_tqdm, raising=False)
+    service.run_augment(input_dir, tmp_path / "output", preset="light")
+
+    assert calls[0][0] == sorted(input_dir.iterdir())
+    assert calls[0][1]["desc"] == "Augmenting"
+
+
 def test_doctor_command_is_registered() -> None:
     from entomokit.main import _build_parser
 

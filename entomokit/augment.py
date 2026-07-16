@@ -27,7 +27,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--input-dir",
         required=True,
-        help="Input directory containing images (JPG/PNG/etc).",
+        help="Input directory containing images. Accepted formats: jpg/jpeg, png, bmp, tif/tiff, webp. Output format matches input format (no conversion). To convert formats, use 'entomokit clean --out-image-format'.",
     )
     p.add_argument(
         "--out-dir",

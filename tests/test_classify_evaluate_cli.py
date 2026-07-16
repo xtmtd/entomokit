@@ -74,6 +74,7 @@ def test_classify_evaluate_run_writes_all_outputs(
         num_workers=2,
         num_threads=0,
         device="auto",
+        overwrite=False,
     )
 
     evaluate_cli.run(args)

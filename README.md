@@ -494,9 +494,10 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 |-----------|-------------|---------|
 | `--input-dir` | Input directory | Required |
 | `--out-dir` | Output directory | Required |
-| `--recursive` | Scan subdirectories | No |
+| `--recursive` | Scan subdirectories; output mirrors input subdirectory structure by default | No |
+| `--flatten` | With `--recursive`: collect all outputs into a single flat directory | No |
 | `--out-short-size` | Shorter side size (-1 = original) | 512 |
-| `--dedup-mode` | `none`, `md5`, `phash` | md5 |
+| `--dedup-mode` | `none`, `md5`, `phash`, `md5+phash` (runs md5 first, then phash on survivors) | md5 |
 | `--phash-threshold` | Phash similarity threshold | 5 |
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--keep-exif` | Preserve EXIF metadata | No |
@@ -525,7 +526,7 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--input-dir` | Input image directory | Required |
+| `--input-dir` | Input image directory. Accepted formats: jpg/jpeg, png, bmp, tif/tiff, webp. Output preserves input format (no conversion — use `entomokit clean --out-image-format` to convert). | Required |
 | `--out-dir` | Output directory | Required |
 | `--preset` | `light`, `medium`, `heavy`, `safe-for-small-dataset` | `light` |
 | `--policy` | Custom policy JSON path (exclusive with `--preset`) | None |
@@ -574,7 +575,7 @@ entomokit split-csv --raw-image-csv data/images.csv \
 | `--raw-image-csv` | Input CSV (image, label columns) | Required |
 | `--out-dir` | Output directory | Required |
 | `--mode` | `ratio` or `count` | ratio |
-| `--val-ratio` / `--val-count` | Validation split | None |
+| `--val-ratio` / `--val-count` | Validation split (keep 0 when using `classify train` — AutoGluon handles internal val split automatically) | 0 |
 | `--known-test-sample-ratio` | Known-sample test ratio | 0.1 |
 | `--unknown-test-sample-ratio` | Unknown-sample test ratio | 0 |
 | `--known-test-sample-count` | Known-sample test target count (count mode) | 0 |
@@ -808,8 +809,8 @@ pip install 'entomokit[classify]'
 ```
 
 **ONNX output**:
-- `prediction` is class name when `label_classes.json` exists next to the ONNX file
-- `prediction_index` always stores the numeric class index
+- Columns match AutoGluon output: `image`, `prediction`, `proba_<class_name>`, ...
+- `prediction` is the class name when `label_classes.json` exists next to the ONNX file, otherwise the numeric index
 
 ---
 
@@ -975,7 +976,7 @@ The report includes:
 
 ### Update Command
 
-Check whether a newer version is available on GitHub and optionally install it.
+Check whether a newer version is available on GitHub (via `version.txt` on the main branch) and optionally install it. Works for all users regardless of local git history.
 
 ```bash
 entomokit update           # check and prompt

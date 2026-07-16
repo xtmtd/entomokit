@@ -9,6 +9,11 @@ from typing import Callable, Optional
 
 import cv2
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 from src.augment.compiler import build_pipeline
 from src.augment.runner import run_pipeline
 
@@ -64,7 +69,8 @@ def run_augment(
     augmented_images: list[dict] = []
     processed_count = 0
 
-    for img_path in image_paths:
+    images = tqdm(image_paths, desc="Augmenting") if tqdm else image_paths
+    for img_path in images:
         if shutdown_flag is not None and shutdown_flag():
             break
         if skip_existing and any(images_out.glob(f"{img_path.stem}*")):

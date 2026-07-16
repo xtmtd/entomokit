@@ -62,7 +62,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--val-ratio",
         type=float,
         default=0.0,
-        help="Val split ratio (from train). 0 = no val split.",
+        help="Val split ratio (from train). 0 = no val split (default). Note: if using for 'entomokit classify train' (AutoGluon), keep this at 0 — AutoGluon automatically performs an internal train/val split.",
     )
     p.add_argument(
         "--val-count",

@@ -125,6 +125,7 @@ def test_predict_run_writes_missing_images_log(tmp_path: Path, monkeypatch) -> N
         num_workers=4,
         num_threads=0,
         device="auto",
+        overwrite=False,
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -182,6 +183,7 @@ def test_predict_run_onnx_enables_progress_by_default(
         num_workers=4,
         num_threads=0,
         device="auto",
+        overwrite=False,
     )
 
     predict_cli.run(args)

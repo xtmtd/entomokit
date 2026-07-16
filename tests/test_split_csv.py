@@ -100,6 +100,7 @@ def test_split_csv_run_passes_known_test_count(tmp_path, monkeypatch):
         images_dir=None,
         copy_images=False,
         verbose=False,
+        overwrite=False,
     )
 
     split_csv_cli.run(args)

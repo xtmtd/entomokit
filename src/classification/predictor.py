@@ -166,11 +166,13 @@ def predict_onnx(
 
     result = input_df.copy()
     prediction_index = all_proba_arr.argmax(axis=1)
-    result["prediction_index"] = prediction_index
     if class_labels and max(prediction_index, default=0) < len(class_labels):
         result["prediction"] = [class_labels[i] for i in prediction_index]
+        for i in range(n_classes):
+            col_name = class_labels[i] if i < len(class_labels) else str(i)
+            result[f"proba_{col_name}"] = all_proba_arr[:, i]
     else:
         result["prediction"] = prediction_index
-    for i in range(n_classes):
-        result[f"proba_{i}"] = all_proba_arr[:, i]
+        for i in range(n_classes):
+            result[f"proba_{i}"] = all_proba_arr[:, i]
     return result

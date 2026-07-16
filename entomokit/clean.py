@@ -51,8 +51,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--dedup-mode",
         default="md5",
-        choices=["none", "md5", "phash"],
-        help="Deduplication strategy: none, exact hash (md5), or perceptual hash (phash).",
+        choices=["none", "md5", "phash", "md5+phash"],
+        help="Deduplication strategy: none, exact hash (md5), perceptual hash (phash), or both (md5+phash runs md5 first then phash on survivors).",
     )
     p.add_argument(
         "--phash-threshold",
@@ -63,7 +63,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--recursive",
         action="store_true",
-        help="Recursively scan subdirectories in --input-dir.",
+        help="Recursively scan subdirectories in --input-dir. Output mirrors the subdirectory structure by default; use --flatten to collect all images into a single directory.",
+    )
+    p.add_argument(
+        "--flatten",
+        action="store_true",
+        help="When used with --recursive, collect all output images into a single flat directory instead of mirroring the input subdirectory structure.",
     )
     p.add_argument(
         "--verbose",
@@ -107,6 +112,8 @@ def run(args: argparse.Namespace) -> None:
     images_subdir.mkdir(parents=True, exist_ok=True)
     save_log(out_dir, args)
 
+    flatten = getattr(args, "flatten", False)
+
     cleaner = ImageCleaner(
         input_dir=str(input_dir),
         output_dir=str(images_subdir),
@@ -122,6 +129,7 @@ def run(args: argparse.Namespace) -> None:
     results = cleaner.process_directory(
         log_path=log_path,
         recursive=args.recursive,
+        flatten=flatten,
     )
 
     total = results["processed"] + results.get("skipped", 0)

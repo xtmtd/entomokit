@@ -505,9 +505,10 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 |-----------|-------------|---------|
 | `--input-dir` | 输入目录 | 必填 |
 | `--out-dir` | 输出目录 | 必填 |
-| `--recursive` | 扫描子目录 | 否 |
+| `--recursive` | 扫描子目录；默认输出镜像输入子目录结构 | 否 |
+| `--flatten` | 与 `--recursive` 配合使用：将所有输出收集到单个扁平目录 | 否 |
 | `--out-short-size` | 短边大小（-1 = 原始） | 512 |
-| `--dedup-mode` | `none`、`md5`、`phash` | md5 |
+| `--dedup-mode` | `none`、`md5`、`phash`、`md5+phash`（先执行 md5，再对剩余图片执行 phash） | md5 |
 | `--phash-threshold` | Phash 相似度阈值 | 5 |
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--keep-exif` | 保留 EXIF 元数据 | 否 |
@@ -536,7 +537,7 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 
 | 参数 | 描述 | 默认值 |
 |-----------|-------------|---------|
-| `--input-dir` | 输入图像目录 | 必填 |
+| `--input-dir` | 输入图像目录。支持格式：jpg/jpeg、png、bmp、tif/tiff、webp。输出格式与输入保持一致（不转换格式——如需转换，请使用 `entomokit clean --out-image-format`）。 | 必填 |
 | `--out-dir` | 输出目录 | 必填 |
 | `--preset` | `light`、`medium`、`heavy`、`safe-for-small-dataset` | `light` |
 | `--policy` | 自定义策略 JSON 路径（与 `--preset` 互斥） | 无 |
@@ -585,7 +586,7 @@ entomokit split-csv --raw-image-csv data/images.csv \
 | `--raw-image-csv` | 输入 CSV（image、label 列） | 必填 |
 | `--out-dir` | 输出目录 | 必填 |
 | `--mode` | `ratio` 或 `count` | ratio |
-| `--val-ratio` / `--val-count` | 验证集划分 | 无 |
+| `--val-ratio` / `--val-count` | 验证集划分（若用于 `classify train`，建议保持 0 — AutoGluon 会自动执行内部 train/val 划分） | 0 |
 | `--known-test-sample-ratio` | 已知样本测试比例 | 0.1 |
 | `--unknown-test-sample-ratio` | 未知样本测试比例 | 0 |
 | `--known-test-sample-count` | 已知样本测试目标数量（count 模式） | 0 |
@@ -819,8 +820,8 @@ pip install 'entomokit[classify]'
 ```
 
 **ONNX 输出**：
-- 当 ONNX 文件旁存在 `label_classes.json` 时，`prediction` 为类别名称
-- `prediction_index` 始终存储数字类别索引
+- 输出列与 AutoGluon 保持一致：`image`、`prediction`、`proba_<类别名称>`、...
+- 当 ONNX 文件旁存在 `label_classes.json` 时，`prediction` 为类别名称，否则为数字索引
 
 ---
 
@@ -986,7 +987,7 @@ entomokit doctor
 
 ### update 命令
 
-从 GitHub 检查更新并可选地安装最新版本。
+从 GitHub 检查更新（通过主分支上的 `version.txt`）并可选地安装最新版本。适用于所有用户，无需本地 git 历史记录。
 
 ```bash
 entomokit update           # 检查并提示

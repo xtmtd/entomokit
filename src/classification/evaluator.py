@@ -130,6 +130,7 @@ def _write_confusion_matrix_pdf(result: dict[str, object], pdf_path: Path) -> No
     ax.set_yticks(range(class_count), class_labels)
     ax.set_xlabel("Predicted label")
     ax.set_ylabel("True label")
+    fig.colorbar(heatmap, ax=ax, fraction=0.046, pad=0.04)
     fig.tight_layout()
     fig.savefig(pdf_path)
     plt.close(fig)
@@ -309,16 +310,21 @@ def evaluate_onnx(
     predictions = result["prediction"].values
 
     class_labels = load_onnx_class_labels(onnx_path)
-    if class_labels is not None and "prediction_index" in result.columns:
-        label_to_idx = {label: idx for idx, label in enumerate(class_labels)}
-        if all(label in label_to_idx for label in labels):
-            labels = np.array([label_to_idx[label] for label in labels])
-            predictions = result["prediction_index"].values
 
-    proba_cols = sorted(
-        [col for col in result.columns if col.startswith("proba_")],
-        key=lambda x: int(x.split("_")[1]),
-    )
+    proba_cols = [col for col in result.columns if col.startswith("proba_")]
+    if class_labels:
+        # Prefer class-name columns (new output); fall back to integer-indexed (proba_0, proba_1, ...)
+        named_cols = [f"proba_{cls}" for cls in class_labels if f"proba_{cls}" in result.columns]
+        if named_cols:
+            proba_cols = named_cols
+        else:
+            # Legacy ONNX output with proba_0, proba_1, ... — sort numerically
+            proba_cols = sorted(
+                [c for c in proba_cols if c.split("_", 1)[1].isdigit()],
+                key=lambda c: int(c.split("_", 1)[1]),
+            )
+    else:
+        proba_cols = sorted(proba_cols)
     proba = result[proba_cols].to_numpy() if proba_cols else None
 
     return build_evaluation_result(

@@ -1,82 +1,78 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from entomokit.update import _status, _local_commit, _local_commit_date, fetch_latest_commit
+from entomokit.update import fetch_remote_version, _parse_version
 
 
-def _make_response(sha: str, date: str, message: str) -> MagicMock:
-    payload = json.dumps({
-        "sha": sha,
-        "commit": {
-            "author": {"date": date},
-            "message": message,
-        }
-    }).encode()
+def _make_tags_response(tags: list) -> MagicMock:
     mock = MagicMock()
-    mock.read.return_value = payload
+    mock.read.return_value = json.dumps(tags).encode()
     mock.__enter__ = lambda s: s
     mock.__exit__ = MagicMock(return_value=False)
     return mock
 
 
-def test_fetch_latest_commit_parses():
-    with patch("urllib.request.urlopen", return_value=_make_response("abc1234def", "2026-07-10T00:00:00Z", "feat: X")):
-        sha, date, msg = fetch_latest_commit()
-    assert sha == "abc1234"  # first 7 chars
-    assert "2026-07-10" in date
-    assert "feat: X" in msg
+def _make_raw_response(content: str) -> MagicMock:
+    mock = MagicMock()
+    mock.read.return_value = content.encode()
+    mock.__enter__ = lambda s: s
+    mock.__exit__ = MagicMock(return_value=False)
+    return mock
 
 
-def test_status_same_sha():
-    assert _status("abc1234", "2026-07-10", "abc1234", "2026-07-11") == "same"
+def test_fetch_remote_version_from_version_txt():
+    """Reads the main-branch version file before consulting release tags."""
+    with patch("urllib.request.urlopen", return_value=_make_raw_response("0.6.0\n")):
+        assert fetch_remote_version() == "0.6.0"
 
 
-def test_status_remote_newer():
-    assert _status("abc1234", "2026-07-09", "def5678", "2026-07-10") == "newer"
+def test_fetch_remote_version_falls_back_to_tags():
+    """Uses tags only when the version file cannot be fetched."""
+    tags_payload = [{"name": "v0.5.0"}, {"name": "v0.4.1"}]
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=[OSError("404"), _make_tags_response(tags_payload)],
+    ):
+        assert fetch_remote_version() == "0.5.0"
 
 
-def test_status_unknown_local():
-    assert _status("unknown", "unknown", "abc1234", "2026-07-10") == "unknown"
+def test_fetch_remote_version_strips_v_prefix():
+    """Tag names with 'v' prefix are stripped."""
+    tags_payload = [{"name": "v1.2.3"}]
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=[OSError("404"), _make_tags_response(tags_payload)],
+    ):
+        ver = fetch_remote_version()
+    assert ver == "1.2.3"
 
 
-def test_local_commit_resolves_from_git_when_unknown():
-    """When __commit__ is 'unknown', try git rev-parse at runtime."""
-    with patch("entomokit.update.__commit__", "unknown"), \
-         patch("subprocess.check_output", return_value="abcd123\n") as mock_check:
-        result = _local_commit()
-    assert result == "abcd123"
-    mock_check.assert_called_once()
+def test_fetch_remote_version_uses_highest_semver_tag():
+    tags_payload = [{"name": "nightly"}, {"name": "v0.4.1"}, {"name": "v0.5.0"}]
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=[OSError("404"), _make_tags_response(tags_payload)],
+    ):
+        assert fetch_remote_version() == "0.5.0"
 
 
-def test_local_commit_returns_unknown_when_git_fails():
-    with patch("entomokit.update.__commit__", "unknown"), \
-         patch("subprocess.check_output", side_effect=OSError):
-        result = _local_commit()
-    assert result == "unknown"
+def test_parse_version_normal():
+    assert _parse_version("0.5.0") < _parse_version("1.2.3")
 
 
-def test_local_commit_returns_static_value_when_known():
-    with patch("entomokit.update.__commit__", "abc1234"):
-        result = _local_commit()
-    assert result == "abc1234"
+def test_parse_version_invalid_returns_zero():
+    assert _parse_version("unknown") < _parse_version("0.0.0")
+    assert _parse_version("") < _parse_version("0.0.0")
 
 
-def test_local_commit_date_resolves_from_git_when_unknown():
-    with patch("entomokit.update.__commit_date__", "unknown"), \
-         patch("subprocess.check_output", return_value="2026-07-10 abc\n") as mock_check:
-        result = _local_commit_date()
-    assert result == "2026-07-10"
-    mock_check.assert_called_once()
+def test_parse_version_ignores_prerelease_suffix():
+    assert _parse_version("0.5.0-rc.1") < _parse_version("0.5.0")
+    assert _parse_version("0.5.0+build.1") == _parse_version("0.5.0")
 
 
-def test_local_commit_date_returns_unknown_when_git_fails():
-    with patch("entomokit.update.__commit_date__", "unknown"), \
-         patch("subprocess.check_output", side_effect=OSError):
-        result = _local_commit_date()
-    assert result == "unknown"
+def test_version_comparison_newer():
+    assert _parse_version("0.5.0") > _parse_version("0.4.1")
 
 
-def test_local_commit_date_returns_static_value_when_known():
-    with patch("entomokit.update.__commit_date__", "2026-07-10"):
-        result = _local_commit_date()
-    assert result == "2026-07-10"
+def test_version_comparison_same():
+    assert _parse_version("0.5.0") == _parse_version("0.5.0")

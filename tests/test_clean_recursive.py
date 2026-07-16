@@ -75,3 +75,31 @@ def test_clean_results_count_invalid_images_as_errors(tmp_path):
     assert results["total"] == 2
     assert results["processed"] == 1
     assert results["errors"] == 1
+
+
+def test_phash_reservation_is_removed_when_saving_fails(tmp_path, monkeypatch):
+    from PIL import Image
+
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "output"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    Image.new("RGB", (10, 10), color=(255, 0, 0)).save(input_dir / "one.png")
+    Image.new("RGB", (10, 10), color=(255, 0, 0)).save(input_dir / "two.png")
+
+    original_save = Image.Image.save
+    calls = 0
+
+    def fail_first_save(self, fp, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("disk full")
+        return original_save(self, fp, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "save", fail_first_save)
+    cleaner = ImageCleaner(str(input_dir), str(output_dir), dedup_mode="phash", threads=1)
+    results = cleaner.process_directory(log_path=str(tmp_path / "log.txt"))
+
+    assert results["errors"] == 1
+    assert results["processed"] == 1

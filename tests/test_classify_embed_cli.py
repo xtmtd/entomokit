@@ -68,6 +68,7 @@ def test_classify_embed_run_writes_metrics_to_out_dir_and_reports_paths(
         num_workers=0,
         num_threads=0,
         device="auto",
+        overwrite=False,
         metrics_sample_size=100,
     )
 

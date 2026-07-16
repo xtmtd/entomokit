@@ -97,6 +97,21 @@ class SynthesisProcessor:
             img = img.convert("RGB")
             return np.array(img)
 
+    def _load_target_image(self, image_path: Path) -> np.ndarray:
+        """Load a foreground (target) image, requiring RGBA (alpha channel).
+
+        Raises ValueError with a clear message if the image lacks an alpha channel,
+        since synthesis requires the alpha mask to composite the insect onto backgrounds.
+        """
+        img = Image.open(image_path)
+        if img.mode != "RGBA":
+            raise ValueError(
+                f"Target image '{image_path.name}' is {img.mode} (no alpha channel). "
+                "Synthesis requires RGBA images with a transparency mask. "
+                "Please use PNG format with an alpha channel (e.g. segmented insect cutouts)."
+            )
+        return np.array(img)
+
     def _save_image(
         self, image: np.ndarray, output_path: Path, quality: int = 90
     ) -> None:
@@ -1026,6 +1041,7 @@ class SynthesisProcessor:
         skipped_images = 0
 
         tasks = []
+        failed_targets = 0
         for target_path in target_paths:
             if shutdown_flag is not None and shutdown_flag():
                 logger.info("Shutdown requested. Stopping synthesis.")
@@ -1036,9 +1052,15 @@ class SynthesisProcessor:
                     skipped_images += 1
                     continue
             try:
-                target_img = self._load_image(target_path)
+                target_img = self._load_target_image(target_path)
+            except ValueError as e:
+                logger.error(str(e))
+                print(f"Error: {e}", file=__import__("sys").stderr)
+                failed_targets += 1
+                continue
             except Exception as e:
                 logger.warning(f"Failed to load {target_path}: {e}")
+                failed_targets += 1
                 continue
 
             for syn_idx in range(num_syntheses):
@@ -1060,6 +1082,13 @@ class SynthesisProcessor:
                         background_path,
                     )
                 )
+
+        if failed_targets > 0 and len(tasks) == 0:
+            raise ValueError(
+                f"All {len(target_paths)} target image(s) failed to load. "
+                "Synthesis requires RGBA PNG images with an alpha channel. "
+                "Check that your --target-dir contains valid RGBA cutouts."
+            )
 
         if threads > 1 and len(tasks) > 0:
             if TQDM_AVAILABLE and not disable_tqdm:

@@ -164,31 +164,29 @@ class ImageCleaner:
         if not self.output_dir.exists():
             return
 
-        for f in self.output_dir.iterdir():
-            if f.is_file():
-                self.used_names.add(f.stem.lower())
+        for f in self.output_dir.rglob("*") if self.output_dir.exists() else []:
+            if not f.is_file():
+                continue
+            self.used_names.add(f.stem.lower())
+            try:
+                img = Image.open(f)
+                if self.dedup_mode in ("md5", "md5+phash"):
+                    md5 = compute_md5(img)
+                    self.dedup_hashes_md5[md5] = f.name
+                if self.dedup_mode in ("phash", "md5+phash"):
+                    ph = compute_phash(img)
+                    ph_value = phash_to_int(ph)
+                    if ph_value is not None:
+                        self.dedup_hashes_phash.append((ph_value, f.name))
+                img.close()
+            except Exception:
+                pass
 
-                try:
-                    img = Image.open(f)
-
-                    if self.dedup_mode == "md5":
-                        md5 = compute_md5(img)
-                        self.dedup_hashes_md5[md5] = f.name
-
-                    elif self.dedup_mode == "phash":
-                        ph = compute_phash(img)
-                        ph_value = phash_to_int(ph)
-                        if ph_value is not None:
-                            self.dedup_hashes_phash.append((ph_value, f.name))
-
-                    img.close()
-                except Exception:
-                    pass
-
-    def process_one(self, src: Path, log_file, log_lock: Lock) -> str:
-        """Process a single image file."""
+    def process_one_to(self, src: Path, dst_dir: Path, log_file, log_lock: Lock) -> str:
+        """Process a single image file, writing output into dst_dir."""
+        phash_registered = False
+        registered_phash = None
         try:
-            suffix = src.suffix.lower()
             ph_value = None
 
             try:
@@ -199,8 +197,9 @@ class ImageCleaner:
                     log_file.flush()
                 return "errors"
 
-            if self.dedup_mode == "md5":
+            if self.dedup_mode == "md5" or self.dedup_mode == "md5+phash":
                 md5 = compute_md5(img)
+                # Check AND register inside one lock acquisition to avoid race condition
                 with self.md5_lock:
                     if md5 in self.dedup_hashes_md5:
                         existing_file = self.dedup_hashes_md5[md5]
@@ -210,9 +209,9 @@ class ImageCleaner:
                             )
                             log_file.flush()
                         return "skipped"
-                    self.dedup_hashes_md5[md5] = src.name
+                    self.dedup_hashes_md5[md5] = src.name  # register while holding lock
 
-            elif self.dedup_mode == "phash":
+            if self.dedup_mode == "phash" or self.dedup_mode == "md5+phash":
                 ph = compute_phash(img)
                 ph_value = phash_to_int(ph)
 
@@ -220,25 +219,39 @@ class ImageCleaner:
                     with log_lock:
                         log_file.write(f"Cannot compute valid phash: {src}\n")
                         log_file.flush()
-                    return "errors"
+                    if self.dedup_mode == "phash":
+                        return "errors"
+                    # md5+phash: md5 already passed, continue without phash check
 
-                with self.phash_lock:
-                    for old_value, old_name in self.dedup_hashes_phash:
-                        dist = hamming_distance(ph_value, old_value)
-                        if dist <= self.phash_threshold:
-                            with log_lock:
-                                log_file.write(
-                                    f"Duplicate(phash): {src} == {old_name} (hamming distance={dist})\n"
-                                )
-                                log_file.flush()
-                            return "skipped"
+                if ph_value is not None:
+                    # Check AND append inside one lock acquisition to avoid race condition
+                    # (two threads could both pass the check before either appends its hash)
+                    with self.phash_lock:
+                        for old_value, old_name in self.dedup_hashes_phash:
+                            dist = hamming_distance(ph_value, old_value)
+                            if dist <= self.phash_threshold:
+                                with log_lock:
+                                    log_file.write(
+                                        f"Duplicate(phash): {src} == {old_name} (hamming distance={dist})\n"
+                                    )
+                                    log_file.flush()
+                                return "skipped"
+                        # Not a duplicate — register hash while still holding the lock
+                        self.dedup_hashes_phash.append((ph_value, str(src)))
+                        phash_registered = True
+                        registered_phash = ph_value
+                        ph_value = None  # mark as already appended
+
+            if self.dedup_mode == "none":
+                pass  # no dedup checks
 
             img = resize_short_edge(img, self.out_short_size)
 
+            dst_dir.mkdir(parents=True, exist_ok=True)
             base = clean_filename(src.stem)
             base = ensure_unique_prefix(base, self.used_names, self.name_lock)
             out_ext = "." + self.out_image_format.lower()
-            dst = self.output_dir / f"{base}{out_ext}"
+            dst = dst_dir / f"{base}{out_ext}"
 
             if out_ext == ".jpg" and img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
@@ -252,16 +265,18 @@ class ImageCleaner:
 
             img.save(dst, **save_params)
 
-            if self.dedup_mode == "md5":
+            if self.dedup_mode in ("md5", "md5+phash"):
                 with self.md5_lock:
                     self.dedup_hashes_md5[md5] = dst.name
-            elif self.dedup_mode == "phash" and ph_value is not None:
-                with self.phash_lock:
-                    self.dedup_hashes_phash.append((ph_value, dst.name))
+            # ph_value is None here if phash already appended above (correct)
+            # ph_value is not None only when dedup_mode is "none" or "md5" — no phash append needed
 
             return "processed"
 
         except Exception as e:
+            if phash_registered:
+                with self.phash_lock:
+                    self.dedup_hashes_phash.remove((registered_phash, str(src)))
             with log_lock:
                 log_file.write(f"Error processing {src}: {e}\n")
                 log_file.flush()
@@ -272,8 +287,14 @@ class ImageCleaner:
         input_dir: Optional[str] = None,
         log_path: Optional[str] = "log.txt",
         recursive: bool = False,
+        flatten: bool = False,
     ) -> dict:
-        """Process all images in directory."""
+        """Process all images in directory.
+
+        When recursive=True and flatten=False (default), mirror the subdirectory
+        structure into the output directory. Use flatten=True to collect all
+        outputs into a single flat directory (legacy behaviour).
+        """
         input_dir = Path(input_dir or self.input_dir)
 
         if not input_dir.exists():
@@ -300,8 +321,13 @@ class ImageCleaner:
         log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         results = {"total": len(files), "processed": 0, "skipped": 0, "errors": 0}
-
         log_lock = Lock()
+
+        def _dst_dir_for(src: Path) -> Path:
+            if not recursive or flatten:
+                return self.output_dir
+            rel = src.parent.relative_to(input_dir)
+            return self.output_dir / rel
 
         with log_file_path.open("a", encoding="utf8") as log_file:
             log_file.write(f"Processing {len(files)} files from {input_dir}\n")
@@ -311,27 +337,22 @@ class ImageCleaner:
 
             if TQDM_AVAILABLE and tqdm:
                 with ThreadPoolExecutor(max_workers=self.threads) as pool:
-                    tasks = []
-                    for f in files:
-                        tasks.append(
-                            pool.submit(self.process_one, f, log_file, log_lock)
-                        )
-
+                    tasks = [
+                        pool.submit(self.process_one_to, f, _dst_dir_for(f), log_file, log_lock)
+                        for f in files
+                    ]
                     for task in tqdm(tasks, desc="Processing images"):
                         try:
                             status = task.result()
                             results[status] += 1
                         except Exception:
                             results["errors"] += 1
-
             else:
                 with ThreadPoolExecutor(max_workers=self.threads) as pool:
-                    futures = []
-                    for f in files:
-                        futures.append(
-                            pool.submit(self.process_one, f, log_file, log_lock)
-                        )
-
+                    futures = [
+                        pool.submit(self.process_one_to, f, _dst_dir_for(f), log_file, log_lock)
+                        for f in files
+                    ]
                     for future in futures:
                         try:
                             status = future.result()

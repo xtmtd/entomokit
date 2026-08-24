@@ -88,8 +88,39 @@ def _save_coco(
     dataset.as_coco(
         annotations_path=str(anno_path),
     )
+    _rewrite_coco_file_names_to_relative(anno_path, dataset.image_paths, out_dir)
     if coco_bbox_format == "xyxy":
         _rewrite_coco_bbox_to_xyxy(anno_path)
+
+
+def _rewrite_coco_file_names_to_relative(
+    json_path: Path, image_paths: List[Path], out_dir: Path
+) -> None:
+    """Rewrite COCO image file_name to be relative to out_dir/images.
+
+    supervision's as_coco() uses only the stem as file_name, which drops any
+    mirrored subdirectory. This restores the relative path so annotations match
+    the actual on-disk image locations.
+    """
+    images_root = out_dir / "images"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    for img in data.get("images", []):
+        # Find the matching source path by stem (supervision uses stem as id/file_name).
+        stem = Path(img.get("file_name", "")).stem
+        match = next(
+            (p for p in image_paths if Path(p).stem == stem),
+            None,
+        )
+        if match is not None:
+            try:
+                rel = Path(match).relative_to(images_root)
+                img["file_name"] = rel.as_posix()
+            except ValueError:
+                # Path is not under images_root; keep as-is.
+                pass
+    json_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def _save_yolo(

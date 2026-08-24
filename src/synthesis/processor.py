@@ -1007,6 +1007,7 @@ class SynthesisProcessor:
         threads: int = 1,
         skip_existing: bool = False,
         shutdown_flag: Optional[Callable[[], bool]] = None,
+        recursive: bool = False,
     ) -> dict:
         """Process all images in directories."""
         output_dir = Path(output_dir)
@@ -1015,11 +1016,18 @@ class SynthesisProcessor:
         image_output_dir.mkdir(parents=True, exist_ok=True)
 
         image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-        target_paths = [
-            p
-            for p in target_dir.iterdir()
-            if p.suffix.lower() in image_extensions and p.is_file()
-        ]
+        if recursive:
+            target_paths = [
+                p
+                for p in target_dir.rglob("*")
+                if p.suffix.lower() in image_extensions and p.is_file()
+            ]
+        else:
+            target_paths = [
+                p
+                for p in target_dir.iterdir()
+                if p.suffix.lower() in image_extensions and p.is_file()
+            ]
         background_paths = [
             p
             for p in background_dir.iterdir()
@@ -1048,6 +1056,9 @@ class SynthesisProcessor:
                 break
             if skip_existing:
                 img_out = output_dir / self.output_subdir
+                if recursive:
+                    rel = target_path.parent.relative_to(target_dir)
+                    img_out = img_out / rel
                 if any(img_out.glob(f"{target_path.stem}_*")):
                     skipped_images += 1
                     continue
@@ -1090,6 +1101,16 @@ class SynthesisProcessor:
                 "Check that your --target-dir contains valid RGBA cutouts."
             )
 
+        def _out_filename(result) -> str:
+            """Return the output filename, mirroring the target subdir when recursive."""
+            if not recursive:
+                return result[1]
+            target_path = Path(result[4]) if result[4] else None
+            if target_path is None:
+                return result[1]
+            rel = target_path.parent.relative_to(target_dir)
+            return f"{rel.as_posix()}/{result[1]}"
+
         if threads > 1 and len(tasks) > 0:
             if TQDM_AVAILABLE and not disable_tqdm:
                 with multiprocessing.Pool(processes=threads) as pool:
@@ -1102,9 +1123,10 @@ class SynthesisProcessor:
                             if result[1] is None:
                                 skipped_images += 1
                             continue
-                        if result[1]:
+                        out_filename = _out_filename(result)
+                        if out_filename:
                             output_path = (
-                                image_output_dir / f"{result[1]}.{self.output_format}"
+                                image_output_dir / f"{out_filename}.{self.output_format}"
                             )
                         else:
                             output_path = (
@@ -1112,9 +1134,9 @@ class SynthesisProcessor:
                                 / f"synth_{synthesis_id:06d}.{self.output_format}"
                             )
                         self._save_image(result[0], output_path)
-                        if result[1] is not None:
+                        if out_filename:
                             self._save_annotation_for_image(
-                                output_filename=result[1],
+                                output_filename=out_filename,
                                 result=result[0],
                                 scale_ratio=result[2],
                                 rotation_angle=result[3],
@@ -1132,9 +1154,10 @@ class SynthesisProcessor:
                         if result[1] is None:
                             skipped_images += 1
                         continue
-                    if result[1]:
+                    out_filename = _out_filename(result)
+                    if out_filename:
                         output_path = (
-                            image_output_dir / f"{result[1]}.{self.output_format}"
+                            image_output_dir / f"{out_filename}.{self.output_format}"
                         )
                     else:
                         output_path = (
@@ -1142,9 +1165,9 @@ class SynthesisProcessor:
                             / f"synth_{synthesis_id:06d}.{self.output_format}"
                         )
                     self._save_image(result[0], output_path)
-                    if result[1] is not None:
+                    if out_filename:
                         self._save_annotation_for_image(
-                            output_filename=result[1],
+                            output_filename=out_filename,
                             result=result[0],
                             scale_ratio=result[2],
                             rotation_angle=result[3],
@@ -1164,9 +1187,10 @@ class SynthesisProcessor:
                         if result[1] is None:
                             skipped_images += 1
                         continue
-                    if result[1]:
+                    out_filename = _out_filename(result)
+                    if out_filename:
                         output_path = (
-                            image_output_dir / f"{result[1]}.{self.output_format}"
+                            image_output_dir / f"{out_filename}.{self.output_format}"
                         )
                     else:
                         output_path = (
@@ -1174,9 +1198,9 @@ class SynthesisProcessor:
                             / f"synth_{synthesis_id:06d}.{self.output_format}"
                         )
                     self._save_image(result[0], output_path)
-                    if result[1] is not None:
+                    if out_filename:
                         self._save_annotation_for_image(
-                            output_filename=result[1],
+                            output_filename=out_filename,
                             result=result[0],
                             scale_ratio=task[2],
                             rotation_angle=result[3],
@@ -1195,9 +1219,10 @@ class SynthesisProcessor:
                         if result[1] is None:
                             skipped_images += 1
                         continue
-                    if result[1]:
+                    out_filename = _out_filename(result)
+                    if out_filename:
                         output_path = (
-                            image_output_dir / f"{result[1]}.{self.output_format}"
+                            image_output_dir / f"{out_filename}.{self.output_format}"
                         )
                     else:
                         output_path = (
@@ -1205,9 +1230,9 @@ class SynthesisProcessor:
                             / f"synth_{synthesis_id:06d}.{self.output_format}"
                         )
                     self._save_image(result[0], output_path)
-                    if result[1] is not None:
+                    if out_filename:
                         self._save_annotation_for_image(
-                            output_filename=result[1],
+                            output_filename=out_filename,
                             result=result[0],
                             scale_ratio=task[2],
                             rotation_angle=result[3],

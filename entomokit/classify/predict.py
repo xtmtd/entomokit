@@ -34,6 +34,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     style_parser(p)
     p.add_argument("--input-csv", help="CSV with 'image' column.")
     p.add_argument("--images-dir", help="Directory to scan for images.")
+    p.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories in --images-dir for images.",
+    )
     model_group = p.add_mutually_exclusive_group(required=True)
     model_group.add_argument("--model-dir", help="AutoGluon predictor directory.")
     model_group.add_argument(
@@ -77,7 +82,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=run)
 
 
-def _has_image_files(images_dir: Path) -> bool:
+def _has_image_files(images_dir: Path, recursive: bool = False) -> bool:
+    if recursive:
+        return any(
+            p.is_file() and p.suffix.lower() in IMAGE_EXTS
+            for p in images_dir.rglob("*")
+        )
     return any(
         p.is_file() and p.suffix.lower() in IMAGE_EXTS for p in images_dir.iterdir()
     )
@@ -86,6 +96,7 @@ def _has_image_files(images_dir: Path) -> bool:
 def _resolve_predict_inputs(
     input_csv: Path | None,
     images_dir: Path | None,
+    recursive: bool = False,
 ) -> tuple["pd.DataFrame", Path | None]:
     import pandas as pd
     from src.classification.utils import load_image_csv
@@ -99,7 +110,7 @@ def _resolve_predict_inputs(
         csv_paths_are_readable = all(path.is_file() for path in csv_paths)
 
         if csv_paths_are_readable:
-            if images_dir is not None and _has_image_files(images_dir):
+            if images_dir is not None and _has_image_files(images_dir, recursive):
                 raise ValueError(
                     "CSV already contains readable image paths; do not pass "
                     "--images-dir at the same time."
@@ -128,11 +139,18 @@ def _resolve_predict_inputs(
     if images_dir is None:
         raise ValueError("At least one of --input-csv or --images-dir is required.")
 
-    imgs = [
-        p.name
-        for p in images_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTS
-    ]
+    if recursive:
+        imgs = [
+            p.relative_to(images_dir).as_posix()
+            for p in images_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+        ]
+    else:
+        imgs = [
+            p.name
+            for p in images_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+        ]
     return pd.DataFrame({"image": sorted(imgs)}), images_dir
 
 
@@ -150,7 +168,7 @@ def run(args: argparse.Namespace) -> None:
     images_dir = Path(args.images_dir) if args.images_dir else None
     try:
         df, images_dir = _resolve_predict_inputs(
-            input_csv=input_csv, images_dir=images_dir
+            input_csv=input_csv, images_dir=images_dir, recursive=args.recursive
         )
     except PredictInputError as exc:
         logs_dir = out_dir / "logs"

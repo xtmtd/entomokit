@@ -18,6 +18,13 @@
 - End with explicit approval question before run.
 - After execution, present main results first and wait for approval before proposing next command.
 
+## extract-frames
+
+- Accepts a directory of videos OR a single video file path.
+- Typical defaults: `--interval 1000`, `--out-image-format jpg`, `--threads 8`.
+- If input has nested video folders, recommend `--recursive` (output mirrors the subdirectory structure) and wait for user confirmation.
+- Non-empty `--out-dir` requires explicit `--resume` (continue) or `--overwrite` (fresh start); default exits with an error.
+
 ## clean
 
 - Required in guided mode.
@@ -45,6 +52,14 @@
   - `metrics.csv` (per-image metrics + warn reasons),
   - `metrics_summary.csv` (aggregate stats + warn counters),
   - `metric_definitions.csv` (metric glossary, units, formulas).
+
+## synthesize
+
+- Required params: `--target-dir`, `--background-dir`, `--out-dir`.
+- Targets must be RGBA PNG cutouts with an alpha channel.
+- Typical defaults: `--num-syntheses 10`, `--annotation-output-format coco`.
+- If targets are in nested class folders, recommend `--recursive` (recurses `--target-dir` only; output mirrors the subdirectory structure) and wait for user confirmation.
+- Non-empty `--out-dir` requires explicit `--resume` (continue) or `--overwrite` (fresh start); default exits with an error.
 
 ## split-csv
 

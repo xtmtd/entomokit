@@ -106,6 +106,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Delete --out-dir contents and re-extract embeddings.",
     )
     p.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories in --images-dir for images.",
+    )
+    p.add_argument(
         "--metrics-sample-size",
         type=int,
         default=10000,
@@ -158,6 +163,7 @@ def run(args: argparse.Namespace) -> None:
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             device=device,
+            recursive=args.recursive,
         )
     else:
         from src.classification.embedder import extract_embeddings_timm
@@ -168,6 +174,7 @@ def run(args: argparse.Namespace) -> None:
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             device=device,
+            recursive=args.recursive,
         )
 
     embed_df.to_csv(out_dir / "embeddings.csv", index=False)

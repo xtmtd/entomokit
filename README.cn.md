@@ -473,6 +473,7 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--threads` | 并行线程数 | 8 |
 | `--max-frames` | 每个视频最大帧数 | 全部 |
+| `--recursive` | 递归扫描 `--input-dir` 的子目录；输出镜像子目录结构 | 否 |
 | `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
 | `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
@@ -669,6 +670,7 @@ entomokit synthesize \
 | `--area-ratio-min` | 最小目标/背景面积比 | 0.05 |
 | `--area-ratio-max` | 最大目标/背景面积比 | 0.20 |
 | `--threads` | 并行工作线程数 | 4 |
+| `--recursive` | 递归扫描 `--target-dir` 的子目录；输出镜像子目录结构 | 否 |
 | `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
 | `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 

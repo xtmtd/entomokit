@@ -22,6 +22,7 @@ def _segment_args(**kw):
         padding_ratio=0.0, repair_strategy=None, device="auto",
         annotation_format=None, coco_bbox_format="xywh",
         lama_mask_dilate=0, out_image_format="png",
+        recursive=False, flatten=False,
     )
     d.update(kw)
     return argparse.Namespace(**d)

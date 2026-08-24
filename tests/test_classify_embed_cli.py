@@ -70,6 +70,7 @@ def test_classify_embed_run_writes_metrics_to_out_dir_and_reports_paths(
         device="auto",
         overwrite=False,
         metrics_sample_size=100,
+        recursive=False,
     )
 
     embed_cli.run(args)

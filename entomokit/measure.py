@@ -44,6 +44,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Delete --out-dir contents and start fresh.",
     )
+    p.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories in --mask-dir for mask images.",
+    )
     p.set_defaults(func=run)
 
 
@@ -90,6 +95,7 @@ def run(args: argparse.Namespace) -> None:
             pixel_size_um=args.pixel_size_um,
             existing_rows=existing_rows or None,
             shutdown_flag=get_shutdown_flag(),
+            recursive=args.recursive,
         )
     except Exception:
         logger.exception("Measurement failed")

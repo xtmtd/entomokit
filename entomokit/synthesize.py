@@ -120,6 +120,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Number of parallel workers.",
     )
     p.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories in --target-dir. Output mirrors the subdirectory structure.",
+    )
+    p.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -225,6 +230,7 @@ def run(args: argparse.Namespace) -> None:
             threads=args.threads,
             skip_existing=args.resume,
             shutdown_flag=get_shutdown_flag(),
+            recursive=args.recursive,
         )
 
         logger.info("Processing complete!")

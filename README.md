@@ -462,6 +462,7 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 | `--out-image-format` | jpg/png/tif | jpg |
 | `--threads` | Parallel threads | 8 |
 | `--max-frames` | Max frames per video | All |
+| `--recursive` | Recursively scan subdirectories in `--input-dir`; output mirrors the subdirectory structure | No |
 | `--resume` | Skip frames already present in `--out-dir` (continue previous run) | No |
 | `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
@@ -658,6 +659,7 @@ entomokit synthesize \
 | `--area-ratio-min` | Min target/background area ratio | 0.05 |
 | `--area-ratio-max` | Max target/background area ratio | 0.20 |
 | `--threads` | Parallel workers | 4 |
+| `--recursive` | Recursively scan subdirectories in `--target-dir`; output mirrors the subdirectory structure | No |
 | `--resume` | Skip target images already synthesised in `--out-dir` | No |
 | `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 

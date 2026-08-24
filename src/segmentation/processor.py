@@ -1030,6 +1030,8 @@ class SegmentationProcessor:
         output_format: str = "png",
         shutdown_flag: Optional[Callable[[], bool]] = None,
         skip_existing: bool = False,
+        recursive: bool = False,
+        flatten: bool = False,
     ) -> Dict[str, Any]:
         """
         Process all images in directory.
@@ -1041,6 +1043,8 @@ class SegmentationProcessor:
             disable_tqdm: Disable tqdm progress bar (for cleaner logs)
             output_format: Output format for saved images
             shutdown_flag: Optional callable that returns True when shutdown is requested
+            recursive: Recursively scan subdirectories
+            flatten: When recursive, collect all outputs into a single flat directory
 
         Returns:
             Dictionary with all processing results
@@ -1053,20 +1057,35 @@ class SegmentationProcessor:
 
         # Find all images
         image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-        image_paths = sorted(
-            p for p in input_dir.iterdir() if p.suffix.lower() in image_extensions
-        )
+        if recursive:
+            image_paths = sorted(
+                p
+                for p in input_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in image_extensions
+            )
+        else:
+            image_paths = sorted(
+                p for p in input_dir.iterdir() if p.suffix.lower() in image_extensions
+            )
 
         logger.info(f"Found {len(image_paths)} images to process")
 
         results: Dict[str, Any] = {"processed": 0, "failed": 0, "output_files": []}
 
+        def _rel_output_dir(img_path: Path) -> Path:
+            """Compute the output subdirectory for an image, mirroring input structure."""
+            if not recursive or flatten:
+                return output_dir
+            rel = img_path.parent.relative_to(input_dir)
+            return output_dir / rel
+
         cpu_parallel_methods = {"otsu", "otsu-bbox", "grabcut", "grabcut-bbox"}
         use_parallel = self.segmentation_method in cpu_parallel_methods and num_workers > 1
 
         def _process_single(img_path: Path) -> None:
+            img_out_dir = _rel_output_dir(img_path)
             if skip_existing:
-                images_dir_check = output_dir / "images"
+                images_dir_check = img_out_dir / "images"
                 if any(images_dir_check.glob(f"{img_path.stem}*")):
                     results.setdefault("skipped", 0)
                     results["skipped"] += 1
@@ -1074,7 +1093,7 @@ class SegmentationProcessor:
             comp = self._compute_image(img_path)
             result = self._write_computation(
                 comp,
-                output_dir=output_dir,
+                output_dir=img_out_dir,
                 base_name=img_path.stem,
                 original_path=str(img_path),
                 output_format=output_format,
@@ -1096,8 +1115,9 @@ class SegmentationProcessor:
                         break
 
                     try:
+                        img_out_dir = _rel_output_dir(img_path)
                         if skip_existing:
-                            images_dir_check = output_dir / "images"
+                            images_dir_check = img_out_dir / "images"
                             if any(images_dir_check.glob(f"{img_path.stem}*")):
                                 results.setdefault("skipped", 0)
                                 results["skipped"] += 1
@@ -1105,7 +1125,7 @@ class SegmentationProcessor:
                         comp = future.result()
                         result = self._write_computation(
                             comp,
-                            output_dir=output_dir,
+                            output_dir=img_out_dir,
                             base_name=img_path.stem,
                             original_path=str(img_path),
                             output_format=output_format,

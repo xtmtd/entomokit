@@ -32,6 +32,7 @@ def extract_embeddings_timm(
     batch_size: int,
     num_workers: int,
     device: torch.device,
+    recursive: bool = False,
 ) -> pd.DataFrame:
     """Extract embeddings using a pretrained timm backbone (no fine-tuning)."""
     import timm
@@ -45,7 +46,18 @@ def extract_embeddings_timm(
     transform = create_transform(**data_config, is_training=False)
 
     IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-    paths = sorted([p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS])
+    if recursive:
+        paths = sorted(
+            [
+                p
+                for p in images_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+            ]
+        )
+    else:
+        paths = sorted(
+            [p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS]
+        )
 
     dataset = _ImageDataset(paths, transform)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
@@ -71,10 +83,22 @@ def extract_embeddings_ag(
     batch_size: int,
     num_workers: int,
     device: torch.device,
+    recursive: bool = False,
 ) -> pd.DataFrame:
     """Extract embeddings using a fine-tuned AutoGluon model."""
     IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-    paths = sorted([p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS])
+    if recursive:
+        paths = sorted(
+            [
+                p
+                for p in images_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+            ]
+        )
+    else:
+        paths = sorted(
+            [p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS]
+        )
     df_in = pd.DataFrame({"image": [str(p) for p in paths]})
 
     with warnings.catch_warnings():

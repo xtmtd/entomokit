@@ -129,6 +129,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     # --- Misc ---
     p.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories in --input-dir. Output mirrors the subdirectory structure by default; use --flatten to collect all outputs into a single directory.",
+    )
+    p.add_argument(
+        "--flatten",
+        action="store_true",
+        help="When used with --recursive, collect all output images into a single flat directory instead of mirroring the input subdirectory structure.",
+    )
+    p.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging."
     )
     p.add_argument(
@@ -221,6 +231,8 @@ def run(args: argparse.Namespace) -> None:
             output_format=args.out_image_format,
             shutdown_flag=get_shutdown_flag(),
             skip_existing=args.resume,
+            recursive=args.recursive,
+            flatten=args.flatten,
         )
 
         logger.info("Processing complete!")

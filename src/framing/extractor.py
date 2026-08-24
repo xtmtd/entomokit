@@ -49,6 +49,7 @@ class VideoFrameExtractor:
         threads: int = 8,
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
+        recursive: bool = False,
     ):
         if cv2 is None:
             raise ImportError(
@@ -63,6 +64,7 @@ class VideoFrameExtractor:
         self.threads = threads
         self.start_time = start_time if start_time is not None else 0.0
         self.end_time = end_time
+        self.recursive = recursive
 
         if self.start_time < 0:
             raise ValueError("start_time cannot be negative")
@@ -82,8 +84,12 @@ class VideoFrameExtractor:
         single_filter = getattr(self, "_single_file_filter", None)
         files = []
         for ext in self.SUPPORTED_VIDEO_FORMATS:
-            files.extend(self.input_dir.glob(f"*.{ext}"))
-            files.extend(self.input_dir.glob(f"*.{ext.upper()}"))
+            if self.recursive:
+                files.extend(self.input_dir.rglob(f"*.{ext}"))
+                files.extend(self.input_dir.rglob(f"*.{ext.upper()}"))
+            else:
+                files.extend(self.input_dir.glob(f"*.{ext}"))
+                files.extend(self.input_dir.glob(f"*.{ext.upper()}"))
         if single_filter:
             files = [f for f in files if f.name == single_filter]
         return sorted(set(files))
@@ -187,7 +193,11 @@ class VideoFrameExtractor:
                 if self.max_frames is not None:
                     frames_to_extract = frames_to_extract[: self.max_frames]
 
-                output_path = self.output_dir / video_path.stem
+                if self.recursive:
+                    rel = video_path.parent.relative_to(self.input_dir)
+                    output_path = self.output_dir / rel / video_path.stem
+                else:
+                    output_path = self.output_dir / video_path.stem
                 output_path.mkdir(parents=True, exist_ok=True)
 
                 for seq_num, frame_idx in enumerate(frames_to_extract, 1):

@@ -58,6 +58,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Extraction interval in milliseconds.",
     )
     p.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories in --input-dir. Output mirrors the subdirectory structure.",
+    )
+    p.add_argument(
         "--resume",
         action="store_true",
         help="Skip frames already present in --out-dir (continue a previous run).",
@@ -123,6 +128,7 @@ def run(args: argparse.Namespace) -> None:
         threads=args.threads,
         start_time=args.start_time,
         end_time=args.end_time,
+        recursive=args.recursive,
     )
 
     # Single file mode: set filter attribute for get_video_files

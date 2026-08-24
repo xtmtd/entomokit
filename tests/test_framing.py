@@ -5,6 +5,87 @@ from pathlib import Path
 from src.framing.extractor import VideoFrameExtractor
 
 
+class TestRecursiveScan:
+    """Test recursive directory scanning for video files."""
+
+    def _make_nested_videos(self, tmp_path):
+        """Create nested structure: input/{species}/{video}.mp4"""
+        for i in range(3):
+            sp_dir = tmp_path / "input" / f"species_{i}"
+            sp_dir.mkdir(parents=True)
+            (sp_dir / f"video_{i}.mp4").write_bytes(b"")
+        return tmp_path / "input"
+
+    def test_get_video_files_finds_nested_when_recursive(self, tmp_path):
+        """recursive=True should find videos in nested dirs."""
+        input_dir = self._make_nested_videos(tmp_path)
+        extractor = VideoFrameExtractor(
+            input_dir=str(input_dir),
+            output_dir=str(tmp_path / "out"),
+            recursive=True,
+        )
+        files = extractor.get_video_files()
+        assert len(files) == 3
+
+    def test_get_video_files_misses_nested_when_not_recursive(self, tmp_path):
+        """recursive=False should NOT find nested videos."""
+        input_dir = self._make_nested_videos(tmp_path)
+        extractor = VideoFrameExtractor(
+            input_dir=str(input_dir),
+            output_dir=str(tmp_path / "out"),
+            recursive=False,
+        )
+        files = extractor.get_video_files()
+        assert len(files) == 0
+
+    def test_extract_from_video_writes_to_mirrored_subdir(self, tmp_path, monkeypatch):
+        """recursive=True should write frames to the mirrored subdir."""
+        input_dir = tmp_path / "input"
+        sp_dir = input_dir / "species_0"
+        sp_dir.mkdir(parents=True)
+        video_path = sp_dir / "video.mp4"
+        video_path.write_bytes(b"")
+
+        out_dir = tmp_path / "out"
+        extractor = VideoFrameExtractor(
+            input_dir=str(input_dir),
+            output_dir=str(out_dir),
+            recursive=True,
+        )
+
+        # Mock cv2 to simulate a short video with 2 frames.
+        class FakeCap:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def isOpened(self):
+                return True
+
+            def get(self, prop):
+                if prop == 5:  # CAP_PROP_FPS
+                    return 10.0
+                if prop == 7:  # CAP_PROP_FRAME_COUNT
+                    return 20
+                return 0
+
+            def read(self):
+                return True, None
+
+            def release(self):
+                pass
+
+        monkeypatch.setattr("src.framing.extractor.cv2.VideoCapture", FakeCap)
+        monkeypatch.setattr(
+            "src.framing.extractor.cv2.imwrite", lambda *_a, **_k: True
+        )
+
+        extractor.extract_from_video(video_path)
+
+        # Frames should be written under out/species_0/video/
+        expected_dir = out_dir / "species_0" / "video"
+        assert expected_dir.exists()
+
+
 class TestTimeRangeValidation:
     """Test time range parameter validation."""
 

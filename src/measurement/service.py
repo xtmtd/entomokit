@@ -303,10 +303,11 @@ def run_batch(
     mask_dir: Path, out_dir: Path, pixel_size_um: float | None,
     existing_rows: list[dict[str, str]] | None = None,
     shutdown_flag: Callable[[], bool] | None = None,
+    recursive: bool = False,
 ) -> dict[str, int]:
     existing_rows = existing_rows or []
     skip_set = {Path(row["file_name"]).stem for row in existing_rows if row.get("file_name")}
-    files = [p for p in iter_mask_files(mask_dir) if p.stem not in skip_set]
+    files = [p for p in iter_mask_files(mask_dir, recursive=recursive) if p.stem not in skip_set]
     rows = [*existing_rows]
     for path in files:
         if shutdown_flag is not None and shutdown_flag():

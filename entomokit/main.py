@@ -84,7 +84,7 @@ def _get_version() -> str:
     try:
         return importlib.metadata.version("entomokit")
     except importlib.metadata.PackageNotFoundError:
-        return "0.5.0"
+        return "0.5.1"
 
 
 def main(argv: list[str] | None = None) -> None:

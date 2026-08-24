@@ -258,7 +258,7 @@ def test_version_flag_prints_package_version_long(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.5.0"
+    assert out.strip() == "entomokit 0.5.1"
 
 
 def test_version_flag_prints_package_version_short(
@@ -272,12 +272,12 @@ def test_version_flag_prints_package_version_short(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.5.0"
+    assert out.strip() == "entomokit 0.5.1"
 
 
 def test_get_version_returns_current():
     from entomokit.main import _get_version
-    assert _get_version() == "0.5.0"
+    assert _get_version() == "0.5.1"
 
 
 def test_bash_falls_back_to_files():

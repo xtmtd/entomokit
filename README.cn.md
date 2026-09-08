@@ -920,7 +920,9 @@ entomokit classify cam \
 
 **CAM 方法**：`gradcam`、`gradcampp`、`layercam`、`scorecam`、`eigencam`、`ablationcam`
 
-**架构自动检测**：自动检测 CNN 或 ViT 架构。
+**架构自动检测**：自动检测 CNN 或 Transformer/ViT 架构。Swin backbone 按 ViT 类模型处理，默认使用最后一个 stage 的最后一个 block 作为 CAM 目标层；ConvNeXt 使用最后一个 stage 的 block，而不是其中的逐点 `mlp.fc2` 层，以避免 GradCAM 热图退化为空。
+
+**评估预处理**：`--eval-transform center-crop`（默认）使用模型保存的确定性验证预处理；热图只覆盖模型实际看到的中心裁剪区域。`--eval-transform whole-specimen-pad` 会先用图像边缘中位色补成方形再缩放，保持宽高比，使热图覆盖整个标本。
 
 **输出**：
 - `figures/` — CAM 叠加图像

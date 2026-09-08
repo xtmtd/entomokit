@@ -909,7 +909,9 @@ entomokit classify cam \
 
 **CAM methods**: `gradcam`, `gradcampp`, `layercam`, `scorecam`, `eigencam`, `ablationcam`
 
-**Architecture auto-detection**: Automatically detects CNN vs ViT architecture.
+**Architecture auto-detection**: Automatically detects CNN vs Transformer/ViT architecture. Swin backbones are handled as ViT-style models with the final stage block as the default CAM target. ConvNeXt backbones use the final stage block instead of its pointwise `mlp.fc2` layer, which avoids degenerate GradCAM maps.
+
+**Evaluation preprocessing**: `--eval-transform center-crop` (default) uses the model's saved deterministic validation preprocessing; the heatmap is limited to the model's center-crop field of view. `--eval-transform whole-specimen-pad` pads the image to a square with its edge-median background color before resizing, so the heatmap covers the complete specimen without aspect-ratio distortion.
 
 **Outputs**:
 - `figures/` — CAM overlay images

@@ -337,7 +337,7 @@ out_dir/
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--label-csv` | str | 必填 | CSV(image,label) |
+| `--label-csv` | str | 可选 | CSV(image,label)；省略时递归处理 `--images-dir` 中的所有支持图像 |
 | `--images-dir` | str | 必填 | 图像目录 |
 | `--out-dir` | str | 必填 | 输出目录 |
 | `--model-dir` | str | 与 `--base-model` 二选一 | AutoGluon predictor 目录 |
@@ -346,27 +346,38 @@ out_dir/
 | `--num-classes` | int | 可选 | 覆盖分类数（timm backbone 时） |
 | `--no-pretrained` | flag | False | 不加载 timm 预训练权重 |
 | `--cam-method` | str | `gradcam` | `gradcam`/`gradcampp`/`layercam`/`scorecam`/`eigencam`/`ablationcam` |
-| `--arch` | str | 自动推断 | `cnn`/`vit` |
+| `--arch` | str | 自动推断 | `cnn`/`vit`；Swin 归入 `vit` |
 | `--target-layer-name` | str | 可选 | 指定 CAM 目标层（点分隔路径） |
 | `--image-weight` | float | 0.5 | 原图与 CAM 叠加权重（0~1） |
 | `--fig-format` | str | `png` | `png`/`jpg`/`pdf` |
 | `--save-npy` | flag | False | 保存 CAM 数组为 .npy |
 | `--max-images` | int | 可选 | 限制处理图像数量 |
 | `--cam-batch-size` | int | 32 | CAM 内部 batch size（ScoreCAM/EigenCAM） |
-| `--num-workers` | int | 4 | DataLoader worker 数 |
+| `--eval-transform` | str | `center-crop` | `center-crop`/`whole-specimen-pad`；后者保持宽高比并覆盖整个标本 |
 | `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动） |
 | `--device` | str | `auto` | `auto`/`cpu`/`cuda`/`mps` |
 
-> **注意**：`cam` 命令仅支持 PyTorch 原生模型（AutoGluon checkpoint 或 timm backbone），**不支持 ONNX**。GradCAM 依赖 PyTorch hook 和反向传播机制，ONNX runtime 不具备此能力。
+> **注意**：`cam` 命令仅支持 PyTorch 原生模型（AutoGluon predictor 或 timm backbone），**不支持 ONNX**。GradCAM 依赖 PyTorch hook 和反向传播机制，ONNX runtime 不具备此能力。
+
+**模型与预处理契约**：
+
+- 使用 `--model-dir` 时，CAM 包装 AutoGluon 保存的 `backbone -> classification head`，解释最终训练类别的 logits；`pred_class` 写入 predictor 的真实类别标签，而非 backbone 特征维度索引。
+- CAM 直接复用 predictor 保存的 `ImageProcessor.val_processor`。因此模型保存的 `image_size` 是唯一输入尺寸来源：224、384 或自定义尺寸都会自动适配；不存在已构建 processor 时，才由保存的 `val_transforms` 重建。
+- `center-crop`（默认）保留该验证预处理，并将热图逆映射到完整原图。模型视野外的像素会被压暗且去色，不经过 CAM colormap；热图绝不将裁剪区域拉伸到整个画面。
+- `whole-specimen-pad` 使用图像四边像素的逐通道中位色补成方形，再缩放到保存的输入尺寸。其逆映射覆盖完整原图，适合需要检查整只昆虫的场景。
+- `--base-model` 没有保存的 AutoGluon processor 时，使用 timm 数据配置。其 center-crop 热图映射保留实际的 resize 尺寸和 crop 尺寸（例如 `Resize(256) -> CenterCrop(224)`）。
+- AutoGluon ViT 根据包装后的 backbone 推断架构，并启用 ViT token reshape；标准 ViT 默认目标层为 `blocks[-1].norm1`，去除 CLS token 后转换为 CAM 所需的 `(B, C, H, W)`。
+- Swin 属于 Transformer/ViT 类架构：默认目标层为 `layers[-1].blocks[-1].norm1`，其 `(B, H, W, C)` 或 `(B, N, C)` 激活被转换为 CAM 所需的 `(B, C, H, W)`；`ablationcam` 使用对应的 channel-last 适配器。
+- ConvNeXt 默认目标层为最后 stage 的最后一个完整 block（例如 `stages.3.blocks.1`），而不是最后一个 pointwise `mlp.fc2`；后者可能使 GradCAM 的正贡献经过 ReLU 后退化为空图。没有这些已知结构的 CNN 仍回退到最后一个 `Conv2d`，也可通过 `--target-layer-name` 显式选择目标层。
 
 **输出**：
 ```
 out_dir/
 ├── figures/
-│   └── {image_stem}_cam.{format}   # 原图与 CAM 叠加的并排图
-├── arrays/                          # 仅 --save-npy 时生成
-│   └── {image_stem}.npy             # 归一化 CAM 数组，float32
-└── cam_summary.csv                  # 列：image, label, pred_class, pred_prob, figure_path, cam_array_path
+│   └── {relative_stem}_cam.{format} # 原图与 CAM 叠加的并排图；子目录以 __ 编码，避免同名覆盖
+├── arrays/                           # 仅 --save-npy 时生成
+│   └── {relative_stem}.npy           # 模型输入空间的归一化 CAM 数组，float32
+└── cam_summary.csv                   # image（相对输入路径）, label, pred_class, pred_prob, figure_path, cam_array_path
 ```
 
 ### 5.7 `classify export-onnx`
@@ -405,17 +416,17 @@ out_dir/
 
 ## 7. CPU/线程控制说明
 
-classify 各命令（train/predict/evaluate/embed/cam）统一支持以下三个并发控制参数：
+除 `export-onnx` 外，classify 命令均支持 `--device`；支持批处理或 DataLoader 的命令还支持 `--num-workers`，CPU 计算或 ONNX 推理命令还支持 `--num-threads`。
 
 | 参数 | 作用层次 | 底层实现 |
 |------|----------|----------|
-| `--num-workers` | DataLoader 图像加载并发 | `DataLoader(num_workers=N)` |
+| `--num-workers` | DataLoader 图像加载并发（train/predict/evaluate/embed） | `DataLoader(num_workers=N)` |
 | `--num-threads` | PyTorch CPU 计算线程 / ONNX 推理线程 | `torch.set_num_threads(N)` / `InferenceSession(intra_op_num_threads=N)` |
 | `--device` | 计算设备选择 | `auto` 时自动检测 cuda→mps→cpu 优先级 |
 
-默认值：`--num-workers=4`，`--num-threads=0`（0 表示交由框架自动决定）。
+`classify cam` 逐图生成 CAM，不提供 `--num-workers`；其 `--cam-batch-size` 仅控制 ScoreCAM/EigenCAM 等方法的内部批量。默认 `--num-threads=0`（由框架决定）。
 
-`export-onnx` 无需这三个参数（纯模型格式转换，无推理运算）。
+`export-onnx` 无需上述并发/设备参数（纯模型格式转换，无推理运算）。
 
 ---
 

@@ -75,7 +75,7 @@
 - Predict: accept `--images-dir` or `--input-csv`.
 - Evaluate: explain key metrics (Accuracy, Balanced Accuracy, F1 macro, MCC).
 - Embed: extract embeddings and quality metrics; optionally visualize with UMAP.
-- CAM: generate GradCAM heatmaps for model interpretability.
+- CAM: generate GradCAM heatmaps for model interpretability. `--label-csv` is optional; when omitted, recursively process supported images under `--images-dir`. `--eval-transform` supports `center-crop` (default, preserve the model validation field of view) and `whole-specimen-pad` (preserve the full specimen). AutoGluon `--model-dir` explains the final classification head. ConvNeXt uses the final stage block, while ViT/Swin use transformer-compatible target layers. `--num-workers` is not supported because CAM processing is per-image; `--cam-batch-size` only affects CAM methods that batch internal work.
 - Export ONNX: generate `model.onnx` and `label_classes.json`.
 - All five subcommands accept `--overwrite` to delete `--out-dir` contents and start fresh; non-empty `--out-dir` without `--overwrite` exits with an error.
 

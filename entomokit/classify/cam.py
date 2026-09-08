@@ -113,10 +113,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Batch size for CAM inference.",
     )
     p.add_argument(
-        "--num-workers",
-        type=int,
-        default=4,
-        help="Number of dataloader worker processes.",
+        "--eval-transform",
+        choices=["center-crop", "whole-specimen-pad"],
+        default="center-crop",
+        help="Evaluation preprocessing: center crop or aspect-preserving square padding.",
     )
     p.add_argument(
         "--num-threads",
@@ -170,4 +170,5 @@ def run(args: argparse.Namespace) -> None:
         max_images=args.max_images,
         cam_batch_size=args.cam_batch_size,
         device=device,
+        eval_transform=args.eval_transform,
     )

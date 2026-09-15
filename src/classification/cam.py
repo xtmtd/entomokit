@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -30,16 +30,109 @@ from timm.data import resolve_model_data_config
 from torchvision.transforms.functional import InterpolationMode
 import cv2
 
+
+class UnnormalizedCAMMixin:
+    """Keep CAM magnitude by skipping BaseCAM's scale_cam_image calls.
+
+    Mirrors pytorch-grad-cam 1.5.5 ``BaseCAM.compute_cam_per_layer`` and
+    ``BaseCAM.aggregate_multi_layers``. ReLU, resize-to-input-size and the
+    per-layer mean are identical to upstream; only the two min-max
+    normalizations are removed.
+
+    ``test_raw_cam_agrees_with_official_cam_after_min_max`` detects upstream
+    drift: if grad-cam adds a non-affine step, changes its resize, or changes
+    its ReLU or aggregation policy, that test fails.
+    """
+
+    @staticmethod
+    def _resize_batch(cam: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
+        return np.stack(
+            [
+                cv2.resize(
+                    np.float32(image), target_size, interpolation=cv2.INTER_LINEAR
+                )
+                for image in cam
+            ]
+        )
+
+    def compute_cam_per_layer(
+        self, input_tensor: torch.Tensor, targets, eigen_smooth: bool
+    ) -> list:
+        if self.detach:
+            activations_list = [
+                activation.cpu().data.numpy()
+                for activation in self.activations_and_grads.activations
+            ]
+            grads_list = [
+                gradient.cpu().data.numpy()
+                for gradient in self.activations_and_grads.gradients
+            ]
+        else:
+            activations_list = list(self.activations_and_grads.activations)
+            grads_list = list(self.activations_and_grads.gradients)
+        target_size = self.get_target_width_height(input_tensor)
+
+        cam_per_target_layer = []
+        for index, target_layer in enumerate(self.target_layers):
+            activations = (
+                activations_list[index] if index < len(activations_list) else None
+            )
+            gradients = grads_list[index] if index < len(grads_list) else None
+            cam = self.get_cam_image(
+                input_tensor,
+                target_layer,
+                targets,
+                activations,
+                gradients,
+                eigen_smooth,
+            )
+            cam = np.maximum(cam, 0)
+            cam_per_target_layer.append(self._resize_batch(cam, target_size)[:, None, :])
+
+        return cam_per_target_layer
+
+    def aggregate_multi_layers(self, cam_per_target_layer: list) -> np.ndarray:
+        stacked = np.concatenate(cam_per_target_layer, axis=1)
+        stacked = np.maximum(stacked, 0)
+        return np.mean(stacked, axis=1)
+
+
+class RawGradCAM(UnnormalizedCAMMixin, GradCAM):
+    pass
+
+
+class RawGradCAMPlusPlus(UnnormalizedCAMMixin, GradCAMPlusPlus):
+    pass
+
+
+class RawLayerCAM(UnnormalizedCAMMixin, LayerCAM):
+    pass
+
+
+class RawScoreCAM(UnnormalizedCAMMixin, ScoreCAM):
+    pass
+
+
+class RawEigenCAM(UnnormalizedCAMMixin, EigenCAM):
+    pass
+
+
+class RawAblationCAM(UnnormalizedCAMMixin, AblationCAM):
+    pass
+
+
 CAM_METHODS = {
-    "gradcam": GradCAM,
-    "gradcampp": GradCAMPlusPlus,
-    "layercam": LayerCAM,
-    "ablationcam": AblationCAM,
-    "scorecam": ScoreCAM,
-    "eigencam": EigenCAM,
+    "gradcam": RawGradCAM,
+    "gradcampp": RawGradCAMPlusPlus,
+    "layercam": RawLayerCAM,
+    "ablationcam": RawAblationCAM,
+    "scorecam": RawScoreCAM,
+    "eigencam": RawEigenCAM,
 }
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+
+SaveMode = Literal["none", "raw", "normalized"]
 
 
 class AblationLayerSwin(AblationLayerVit):
@@ -348,7 +441,7 @@ def prepare_cam(
 
 
 def map_cam_to_original(
-    cam_norm: np.ndarray,
+    cam_display: np.ndarray,
     original_size: tuple[int, int],
     *,
     model_size: int,
@@ -358,10 +451,10 @@ def map_cam_to_original(
     """Return the original-coordinate CAM and the model field-of-view mask."""
     width, height = original_size
     resize_size = resize_size or model_size
-    cam_norm = cv2.resize(cam_norm, (model_size, model_size), interpolation=cv2.INTER_LINEAR)
+    cam_display = cv2.resize(cam_display, (model_size, model_size), interpolation=cv2.INTER_LINEAR)
     if eval_transform == "whole-specimen-pad":
         side = max(width, height)
-        padded = cv2.resize(cam_norm, (side, side), interpolation=cv2.INTER_LINEAR)
+        padded = cv2.resize(cam_display, (side, side), interpolation=cv2.INTER_LINEAR)
         if width >= height:
             top = (side - height) // 2
             mapped = padded[top : top + height, :]
@@ -382,7 +475,7 @@ def map_cam_to_original(
     top = int(round((resized_height - model_size) / 2))
     canvas = np.zeros((resized_height, resized_width), dtype=np.float32)
     fov = np.zeros((resized_height, resized_width), dtype=bool)
-    canvas[top : top + model_size, left : left + model_size] = cam_norm
+    canvas[top : top + model_size, left : left + model_size] = cam_display
     fov[top : top + model_size, left : left + model_size] = True
     mapped = cv2.resize(canvas, (width, height), interpolation=cv2.INTER_LINEAR)
     fov = cv2.resize(fov.astype(np.float32), (width, height), interpolation=cv2.INTER_NEAREST)
@@ -435,11 +528,11 @@ def output_stem(image: str) -> str:
     return Path(image).with_suffix("").as_posix().replace("/", "__")
 
 
-def prepare_output_dirs(out_dir: Path, save_npy: bool) -> Dict[str, Optional[Path]]:
+def prepare_output_dirs(out_dir: Path, save_npy: SaveMode) -> Dict[str, Optional[Path]]:
     fig_dir = out_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
     array_dir: Optional[Path] = None
-    if save_npy:
+    if save_npy != "none":
         array_dir = out_dir / "arrays"
         array_dir.mkdir(parents=True, exist_ok=True)
     return {"fig": fig_dir, "array": array_dir}
@@ -469,7 +562,7 @@ def process_image(
     array_dir: Optional[Path],
     image_weight: float,
     fig_format: str,
-    save_npy: bool,
+    save_npy: SaveMode,
     eval_transform: str = "center-crop",
     model_size: int = 224,
     resize_size: Optional[int] = None,
@@ -491,14 +584,16 @@ def process_image(
     targets = [ClassifierOutputTarget(pred_idx)]
     grayscale_cam = cam_extractor(input_tensor=input_tensor, targets=targets)[0]
 
-    cam_norm = grayscale_cam - grayscale_cam.min()
-    if cam_norm.max() > 0:
-        cam_norm = cam_norm / cam_norm.max()
+    # Display copy: show_cam_on_image needs [0, 1]. The saved array keeps the
+    # unnormalized CAM unless save_npy == "normalized".
+    cam_display = grayscale_cam - grayscale_cam.min()
+    if cam_display.max() > 0:
+        cam_display = cam_display / cam_display.max()
     else:
-        cam_norm = np.zeros_like(cam_norm)
+        cam_display = np.zeros_like(cam_display)
 
     cam_on_full, fov_mask = map_cam_to_original(
-        cam_norm,
+        cam_display,
         original_img.size,
         model_size=model_size,
         resize_size=resize_size,
@@ -527,9 +622,10 @@ def process_image(
     combined.save(fig_path)
 
     cam_array_path = ""
-    if save_npy and array_dir is not None:
+    if save_npy != "none" and array_dir is not None:
         npy_path = array_dir / f"{stem}.npy"
-        np.save(npy_path, cam_norm.astype(np.float32))
+        cam_array = cam_display if save_npy == "normalized" else grayscale_cam
+        np.save(npy_path, cam_array.astype(np.float32))
         cam_array_path = str(npy_path)
 
     class_labels = getattr(model, "class_labels", None)
@@ -559,7 +655,7 @@ def run_cam(
     target_layer_name: Optional[str],
     image_weight: float,
     fig_format: str,
-    save_npy: bool,
+    save_npy: SaveMode,
     dump_model_structure: bool,
     max_images: Optional[int],
     cam_batch_size: int,
@@ -628,3 +724,9 @@ def run_cam(
             logging.exception("Failed on %s: %s", img_path, exc)
     if records:
         pd.DataFrame(records).to_csv(out_dir / "cam_summary.csv", index=False)
+        logging.info("CAM heatmaps written to: %s", out_dirs["fig"])
+        logging.info("Summary: %s", out_dir / "cam_summary.csv")
+        if out_dirs["array"] is not None:
+            logging.info(
+                "CAM arrays written to: %s (%s)", out_dirs["array"], save_npy
+            )

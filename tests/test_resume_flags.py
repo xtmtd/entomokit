@@ -400,7 +400,7 @@ def _cam_args(**kw):
         target_layer_name=None,
         image_weight=0.5,
         fig_format="png",
-        save_npy=False,
+        save_npy="none",
         dump_model_structure=False,
         max_images=None,
         cam_batch_size=32,

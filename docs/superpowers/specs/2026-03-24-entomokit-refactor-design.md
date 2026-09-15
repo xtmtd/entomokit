@@ -350,7 +350,7 @@ out_dir/
 | `--target-layer-name` | str | 可选 | 指定 CAM 目标层（点分隔路径） |
 | `--image-weight` | float | 0.5 | 原图与 CAM 叠加权重（0~1） |
 | `--fig-format` | str | `png` | `png`/`jpg`/`pdf` |
-| `--save-npy` | flag | False | 保存 CAM 数组为 .npy |
+| `--save-npy` | str | `none` | `none`（默认，不保存）/`raw`（未归一化正值 CAM，保留幅值）/`normalized`（逐图 min-max，落在 `[0, 1]`）；值为必填 |
 | `--max-images` | int | 可选 | 限制处理图像数量 |
 | `--cam-batch-size` | int | 32 | CAM 内部 batch size（ScoreCAM/EigenCAM） |
 | `--eval-transform` | str | `center-crop` | `center-crop`/`whole-specimen-pad`；后者保持宽高比并覆盖整个标本 |
@@ -369,14 +369,19 @@ out_dir/
 - AutoGluon ViT 根据包装后的 backbone 推断架构，并启用 ViT token reshape；标准 ViT 默认目标层为 `blocks[-1].norm1`，去除 CLS token 后转换为 CAM 所需的 `(B, C, H, W)`。
 - Swin 属于 Transformer/ViT 类架构：默认目标层为 `layers[-1].blocks[-1].norm1`，其 `(B, H, W, C)` 或 `(B, N, C)` 激活被转换为 CAM 所需的 `(B, C, H, W)`；`ablationcam` 使用对应的 channel-last 适配器。
 - ConvNeXt 默认目标层为最后 stage 的最后一个完整 block（例如 `stages.3.blocks.1`），而不是最后一个 pointwise `mlp.fc2`；后者可能使 GradCAM 的正贡献经过 ReLU 后退化为空图。没有这些已知结构的 CNN 仍回退到最后一个 `Conv2d`，也可通过 `--target-layer-name` 显式选择目标层。
+- entomokit 跳过 pytorch-grad-cam 内部两次 `scale_cam_image()`，保留 ReLU 与 resize 到模型输入尺寸，因此保存的数组保留幅值；overlay 图始终使用独立的逐图 min-max 副本。
+- `min-max` 具有仿射不变性，`cv2.INTER_LINEAR` 缩放是仿射的，因此 `--save-npy normalized` 与旧版本的模型空间 normalized CAM mask 在测量范围内保持 float32 精度内的一致性（当前 fixture 上六种方法最大偏差 `1.8e-7`~`2.4e-7`），但不是逐位相同，也不是跨模型/跨输入的普遍保证。
+- overlay 图继续使用 normalized display mask，显示语义保持不变；但最终 PNG 已经过 `np.uint8` 量化，其像素差异不是兼容性契约。当前 fixture 的端到端测量显示五种方法像素一致，`scorecam` 有 44 个像素、最大 2 LSB 的差异；该结果仅作为测试基线，不作为普遍保证。
+- `raw` 幅值仅在同一模型、同一目标层、同一预处理配置内可比，不适用于跨 backbone/跨层/跨 CAM 方法比较。
+- `eigencam` 的数值来自 SVD 投影，符号任意且之后仍经过 ReLU；符号翻转时可能整幅图被清零，其 `raw` 幅值不可用于响应强度统计。
 
 **输出**：
 ```
 out_dir/
 ├── figures/
 │   └── {relative_stem}_cam.{format} # 原图与 CAM 叠加的并排图；子目录以 __ 编码，避免同名覆盖
-├── arrays/                           # 仅 --save-npy 时生成
-│   └── {relative_stem}.npy           # 模型输入空间的归一化 CAM 数组，float32
+├── arrays/                           # 仅 --save-npy raw / normalized 时生成（默认 none 不生成）
+│   └── {relative_stem}.npy           # raw 为未归一化正值 CAM，normalized 为逐图 min-max；均为模型输入空间的 float32 数组
 └── cam_summary.csv                   # image（相对输入路径）, label, pred_class, pred_prob, figure_path, cam_array_path
 ```
 

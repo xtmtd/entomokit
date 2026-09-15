@@ -895,7 +895,7 @@ entomokit classify cam \
     --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
     --cam-method gradcam \
     --out-dir runs/cam/ \
-    --save-npy
+    --save-npy raw
 ```
 
 **With ground-truth labels**:
@@ -916,7 +916,9 @@ entomokit classify cam \
 **Outputs**:
 - `figures/` — CAM overlay images
 - `cam_summary.csv` — Metadata
-- `arrays/` — Raw CAM arrays (with `--save-npy`)
+- `arrays/` — CAM arrays (`--save-npy raw` keeps the unnormalized CAM; `--save-npy normalized` writes per-image min-max values; no arrays are written by default)
+
+`--save-npy` takes `none` (default), `raw`, or `normalized`. `raw` keeps the CAM magnitude; `normalized` writes the per-image min-max `[0, 1]` mask, which is the same normalized copy the overlay uses. Raw magnitude statistics are intended for gradient-based CAM methods under fixed settings: they are only comparable within one model, target layer, and preprocessing configuration, and `eigencam` raw values are exported for completeness but are not suitable for response-magnitude statistics. `--save-npy normalized` preserves the previous normalized semantics and is numerically equivalent within the tolerance measured during development; the overlay keeps the same display semantics, and pixel-identical output is not guaranteed.
 
 **Find target layer**:
 ```bash

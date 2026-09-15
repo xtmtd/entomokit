@@ -35,3 +35,16 @@ def test_measure_schema_excludes_threads() -> None:
     names = {item["name"] for item in schema["parameters"]}
     assert "--threads" not in names
     assert "-n" not in names
+
+
+def test_classify_cam_schema_exposes_save_npy_values() -> None:
+    from entomokit.cli_schema import get_command_schema
+
+    schema = get_command_schema("classify cam")
+    assert schema is not None
+    params = {item["name"]: item for item in schema["parameters"]}
+
+    save_npy = params["--save-npy"]
+    assert save_npy["choices"] == ["none", "raw", "normalized"]
+    assert save_npy["default"] == "none"
+    assert save_npy["value_hint"] == "none | raw | normalized"

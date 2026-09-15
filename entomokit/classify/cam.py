@@ -92,8 +92,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--save-npy",
-        action="store_true",
-        help="Save raw CAM heatmaps as NumPy arrays.",
+        choices=["none", "raw", "normalized"],
+        default="none",
+        help="Save CAM arrays to arrays/*.npy: 'none' (default), 'raw' "
+             "(unnormalized positive CAM, magnitude preserved), or 'normalized' "
+             "(per-image min-max in [0, 1]).",
     )
     p.add_argument(
         "--dump-model-structure",
@@ -142,10 +145,14 @@ def run(args: argparse.Namespace) -> None:
     from pathlib import Path
     from src.classification.utils import select_device, set_num_threads
     from src.classification.cam import run_cam
-    from src.common.cli import check_output_dir, save_log
+    from src.common.cli import check_output_dir, save_log, setup_logging
 
     out_dir = Path(args.out_dir)
     check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
+    # Configure logging before save_log so the console handler binds the real stdout
+    # (save_log wraps sys.stdout in a tee); without it every logging.info below is
+    # dropped by the unconfigured root logger.
+    setup_logging(out_dir)
     save_log(out_dir, args)
 
     device = select_device(args.device)

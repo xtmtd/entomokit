@@ -906,7 +906,7 @@ entomokit classify cam \
     --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
     --cam-method gradcam \
     --out-dir runs/cam/ \
-    --save-npy
+    --save-npy raw
 ```
 
 **带真实标签**：
@@ -927,7 +927,9 @@ entomokit classify cam \
 **输出**：
 - `figures/` — CAM 叠加图像
 - `cam_summary.csv` — 元数据
-- `arrays/` — 原始 CAM 数组（使用 `--save-npy`）
+- `arrays/` — CAM 数组（`--save-npy raw` 保留未归一化 CAM；`--save-npy normalized` 写入逐图 min-max 值；默认不生成任何数组）
+
+`--save-npy` 需要显式取值：`none`（默认，不保存）、`raw`（未归一化正值 CAM，保留幅值）、`normalized`（逐图 min-max `[0, 1]`，即 overlay 使用的归一化副本）。`raw` 幅值统计仅适用于固定设置下的梯度类 CAM 方法：只在同一模型、同一目标层、同一预处理配置内可比；`eigencam` 的 `raw` 数值仅为完整性导出，不适用于响应强度统计。`--save-npy normalized` 保留旧的归一化语义，在开发期间的测量容差内数值等价；overlay 保持相同的显示语义，但不保证像素级完全一致。
 
 **查找目标层**：
 ```bash

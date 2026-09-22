@@ -139,6 +139,35 @@ def run(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    # Validate the label CSV before creating outputs or extracting embeddings, so a
+    # bad label file fails fast instead of wasting a full extraction.
+    label_df = None
+    if args.label_csv:
+        from src.classification.embedder import IMAGE_EXTS
+
+        images_dir = Path(args.images_dir)
+        if not images_dir.is_dir():
+            raise ValueError(f"--images-dir is not a directory: {images_dir}")
+
+        label_df = load_image_csv(Path(args.label_csv), require_label=True)
+        duplicated = label_df["image"][label_df["image"].duplicated()].unique()
+        if len(duplicated):
+            raise ValueError(
+                f"--label-csv contains duplicate image rows: "
+                f"{', '.join(map(str, duplicated[:5]))}"
+            )
+
+        present = {
+            p.name
+            for p in images_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+        }
+        if not (set(label_df["image"].astype(str)) & present):
+            raise ValueError(
+                f"--label-csv has no 'image' values matching the image file names "
+                f"in {images_dir}"
+            )
+
     out_dir = Path(args.out_dir)
     check_output_dir(out_dir, resume=False, overwrite=args.overwrite, has_resume=False)
     logs_dir = out_dir / "logs"
@@ -175,7 +204,6 @@ def run(args: argparse.Namespace) -> None:
 
     # Supervised metrics + UMAP
     if args.label_csv:
-        label_df = load_image_csv(Path(args.label_csv), require_label=True)
         merged = embed_df.merge(label_df[["image", "label"]], on="image", how="inner")
         feat_cols = [c for c in merged.columns if c.startswith("feat_")]
         embeddings = merged[feat_cols].values
@@ -190,7 +218,7 @@ def run(args: argparse.Namespace) -> None:
         metrics_path = out_dir / "metrics.csv"
         metrics_df.to_csv(metrics_path, index=False)
         for k, v in metrics.items():
-            print(f"  {k}: {v:.4f}")
+            print(f"  {k}: N/A" if v is None else f"  {k}: {float(v):.4f}")
         print(f"Metrics saved to: {metrics_path}")
 
         if args.visualize:

@@ -12,6 +12,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 
+# Image suffixes both embedders load; the CLI reuses this to pre-validate
+# --label-csv against --images-dir.
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+
 
 class _ImageDataset(Dataset):
     def __init__(self, image_paths: List[Path], transform):
@@ -44,8 +48,13 @@ def extract_embeddings_timm(
     data_config = resolve_model_data_config(model)
     transform = create_transform(**data_config, is_training=False)
 
-    IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-    paths = sorted([p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS])
+    paths = sorted(
+        [
+            p
+            for p in images_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+        ]
+    )
 
     dataset = _ImageDataset(paths, transform)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
@@ -73,8 +82,13 @@ def extract_embeddings_ag(
     device: torch.device,
 ) -> pd.DataFrame:
     """Extract embeddings using a fine-tuned AutoGluon model."""
-    IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-    paths = sorted([p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS])
+    paths = sorted(
+        [
+            p
+            for p in images_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+        ]
+    )
     df_in = pd.DataFrame({"image": [str(p) for p in paths]})
 
     with warnings.catch_warnings():
@@ -100,24 +114,116 @@ def extract_embeddings_ag(
     return embed_df
 
 
+_METRIC_KEYS: tuple[str, ...] = (
+    "NMI",
+    "ARI",
+    "Recall@1",
+    "Recall@5",
+    "Recall@10",
+    "kNN_Acc_k1",
+    "kNN_Acc_k5",
+    "kNN_Acc_k20",
+    "Linear_Probing_Acc",
+    "Linear_Probing_Balanced_Acc",
+    "mAP@R",
+    "Purity",
+    "Silhouette_Score",
+)
+
+
+def _make_stratified_cv(labels: np.ndarray, max_splits: int = 5):
+    """Return a shuffled StratifiedKFold, or None when stratified CV is impossible.
+
+    The fold count is bounded by the smallest class count, not by the number of
+    classes, so a two-class dataset with enough samples per class still gets
+    ``max_splits`` folds. A singleton class cannot be stratified.
+    """
+    from sklearn.model_selection import StratifiedKFold
+
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    if len(unique_labels) < 2 or int(counts.min()) < 2:
+        return None
+    return StratifiedKFold(
+        n_splits=min(max_splits, int(counts.min())),
+        shuffle=True,
+        random_state=42,
+    )
+
+
+def _recall_at_k(neighbors: np.ndarray, y: np.ndarray, k: int) -> float | None:
+    """Recall@k over a precomputed ranking, with the query excluded by index.
+
+    The query index is removed by value, not by position: under exact-duplicate
+    embeddings the query is not reliably the first entry of its own ranking.
+    Every query stays in the denominator, so a singleton query counts as a miss.
+    """
+    if k < 1 or k > len(y) - 1:
+        return None
+    hits = 0
+    for i in range(len(y)):
+        candidates = [int(j) for j in neighbors[i][: k + 1] if j != i][:k]
+        if any(y[j] == y[i] for j in candidates):
+            hits += 1
+    return float(hits / len(y))
+
+
+def _mean_ap_at_r(neighbors: np.ndarray, y: np.ndarray) -> float | None:
+    """mAP@R over a precomputed ranking, with the query excluded by index.
+
+    Unlike recall, queries with no non-self relevant item are excluded from the
+    mean instead of counting as a miss.
+    """
+    aps = []
+    for i in range(len(y)):
+        r = int((y == y[i]).sum()) - 1
+        if r == 0:
+            continue
+        candidates = [int(j) for j in neighbors[i] if j != i][:r]
+        hits = y[candidates] == y[i]
+        precisions = hits.cumsum() / (np.arange(len(hits)) + 1)
+        aps.append(float((precisions * hits).sum() / r))
+    return float(np.mean(aps)) if aps else None
+
+
 def compute_embedding_metrics(
     embeddings: np.ndarray,
     labels: np.ndarray,
     sample_size: int = 10000,
-) -> Dict[str, float]:
+) -> Dict[str, float | None]:
     """Compute embedding space quality metrics.
 
-    Returns dict with: NMI, ARI, Recall@1/5/10, kNN_Acc_k1/5/20,
-    Linear_Probing_Acc, Purity, Silhouette_Score.
+    Returns the keys in ``_METRIC_KEYS``: NMI, ARI, Recall@1/5/10,
+    kNN_Acc_k1/5/20, Linear_Probing_Acc, Linear_Probing_Balanced_Acc, mAP@R,
+    Purity, Silhouette_Score.
+
+    Contract:
+      * kNN and linear probing are cross-validated with
+        ``StratifiedKFold(shuffle=True, random_state=42)`` whose fold count is
+        bounded by the smallest class count.
+      * Metrics that cannot be computed (singleton class, too few samples,
+        degenerate clustering, no rankable query) are ``None``; the CLI writes
+        them as empty CSV cells and prints ``N/A``.
+      * Recall@K keeps every query in its denominator, while mAP@R excludes
+        queries with no non-self relevant item.
+      * Only a query's own index is excluded from its ranking; the order of
+        exactly equidistant neighbours stays whatever scikit-learn returns.
+      * Silhouette_Score is a cosine silhouette against the true labels.
     """
+    from collections import Counter
+
+    from sklearn.cluster import KMeans
+    from sklearn.exceptions import ConvergenceWarning
+    from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import (
         normalized_mutual_info_score,
         adjusted_rand_score,
         silhouette_score,
     )
-    from sklearn.neighbors import KNeighborsClassifier
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import cross_val_score, cross_validate
+    from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
     from sklearn.preprocessing import LabelEncoder
+
+    metrics: Dict[str, float | None] = dict.fromkeys(_METRIC_KEYS)
 
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -125,15 +231,16 @@ def compute_embedding_metrics(
             message=".*encountered in matmul",
             category=RuntimeWarning,
         )
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
-        le = LabelEncoder()
-        y = le.fit_transform(labels)
+        y = LabelEncoder().fit_transform(labels)
+        if len(y) == 0:
+            return metrics
 
-        # Subsample if needed
+        # Subsample if needed; sorted so the selected rows keep a canonical order.
         n = len(y)
         if 0 < sample_size < n:
-            rng = np.random.RandomState(42)
-            idx = rng.choice(n, sample_size, replace=False)
+            idx = np.sort(np.random.RandomState(42).choice(n, sample_size, replace=False))
             X, y = embeddings[idx], y[idx]
         else:
             X = embeddings
@@ -142,87 +249,113 @@ def compute_embedding_metrics(
         norms = np.linalg.norm(X, axis=1, keepdims=True)
         X_norm = X / np.where(norms > 0, norms, 1)
 
-        # Clustering metrics
-        from sklearn.cluster import KMeans
+        cv = _make_stratified_cv(y)
 
-        n_clusters = len(np.unique(y))
-        km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        cluster_labels = km.fit_predict(X_norm)
+        # Clustering metrics: KMeans says nothing when there are fewer distinct
+        # points than clusters, and would silently return a degenerate labelling
+        # (plus a ConvergenceWarning) instead of failing.
+        unique_labels = np.unique(y)
+        n_clusters = len(unique_labels)
+        if (
+            n_clusters >= 2
+            and len(X_norm) >= 2
+            and np.unique(X_norm, axis=0).shape[0] >= n_clusters
+        ):
+            km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            cluster_labels = km.fit_predict(X_norm)
 
-        nmi = normalized_mutual_info_score(y, cluster_labels)
-        ari = adjusted_rand_score(y, cluster_labels)
+            metrics["NMI"] = float(normalized_mutual_info_score(y, cluster_labels))
+            metrics["ARI"] = float(adjusted_rand_score(y, cluster_labels))
 
-        # Purity
-        from collections import Counter
+            purity_sum = sum(
+                Counter(y[cluster_labels == c]).most_common(1)[0][1]
+                for c in np.unique(cluster_labels)
+            )
+            metrics["Purity"] = float(purity_sum / len(y))
 
-        purity_sum = sum(
-            Counter(y[cluster_labels == c]).most_common(1)[0][1]
-            for c in np.unique(cluster_labels)
-        )
-        purity = purity_sum / len(y)
+        # Recall@K: the query is excluded by index, every query stays in the
+        # denominator.
+        if len(y) >= 2:
+            for k in (1, 5, 10):
+                if k < 1 or k > len(y) - 1:
+                    continue
+                neighbors = (
+                    NearestNeighbors(n_neighbors=min(len(y), k + 1), metric="euclidean")
+                    .fit(X_norm)
+                    .kneighbors(X_norm, return_distance=False)
+                )
+                metrics[f"Recall@{k}"] = _recall_at_k(neighbors, y, k)
 
-        # kNN accuracy
-        def knn_acc(k):
-            knn = KNeighborsClassifier(n_neighbors=k, metric="euclidean")
-            knn.fit(X_norm, y)
-            return knn.score(X_norm, y)
+        # kNN accuracy: cross-validated, so k must fit the smallest training fold.
+        if cv is not None:
+            max_train_size = len(y) - int(np.ceil(len(y) / cv.n_splits))
+            for k in (1, 5, 20):
+                if k < 1 or k > max_train_size:
+                    continue
+                try:
+                    scores = cross_val_score(
+                        KNeighborsClassifier(n_neighbors=k, metric="euclidean"),
+                        X_norm,
+                        y,
+                        cv=cv,
+                        error_score="raise",
+                    )
+                except Exception:
+                    continue
+                if np.all(np.isfinite(scores)):
+                    metrics[f"kNN_Acc_k{k}"] = float(np.mean(scores))
 
-        # Recall@K
-        def recall_at_k(k):
-            from sklearn.neighbors import NearestNeighbors
+        # Linear probing: one shared CV pass, ordinary and balanced accuracy.
+        if cv is not None:
+            try:
+                scores = cross_validate(
+                    LogisticRegression(max_iter=1000, random_state=42),
+                    X_norm,
+                    y,
+                    cv=cv,
+                    scoring={
+                        "accuracy": "accuracy",
+                        "balanced_accuracy": "balanced_accuracy",
+                    },
+                    error_score="raise",
+                )
+            except Exception:
+                pass
+            else:
+                if np.all(np.isfinite(scores["test_accuracy"])):
+                    metrics["Linear_Probing_Acc"] = float(
+                        np.mean(scores["test_accuracy"])
+                    )
+                if np.all(np.isfinite(scores["test_balanced_accuracy"])):
+                    metrics["Linear_Probing_Balanced_Acc"] = float(
+                        np.mean(scores["test_balanced_accuracy"])
+                    )
 
-            nbrs = NearestNeighbors(n_neighbors=k + 1, metric="euclidean")
-            nbrs.fit(X_norm)
-            indices = nbrs.kneighbors(X_norm, return_distance=False)[:, 1:]
-            hits = sum(any(y[j] == y[i] for j in indices[i]) for i in range(len(y)))
-            return hits / len(y)
+        # mAP@R: mean Average Precision at R (R = number of same-class samples
+        # excluding the query). The full ranking is kept: a truncated window is
+        # not tie-equivalent to it when duplicate embeddings are present.
+        if len(y) >= 2:
+            neighbors = (
+                NearestNeighbors(n_neighbors=len(y), metric="euclidean")
+                .fit(X_norm)
+                .kneighbors(X_norm, return_distance=False)
+            )
+            metrics["mAP@R"] = _mean_ap_at_r(neighbors, y)
 
-        # Linear probing
-        lr = LogisticRegression(max_iter=500, random_state=42, solver="liblinear")
-        lr.fit(X_norm, y)
-        lp_acc = lr.score(X_norm, y)
-
-        # Silhouette (sample 2000 for speed)
+        # Silhouette: true-label cosine silhouette on a capped sample.
         sil_idx = np.random.RandomState(42).choice(
             len(y), min(2000, len(y)), replace=False
         )
-        sil = silhouette_score(X_norm[sil_idx], y[sil_idx])
+        sil_labels = y[sil_idx]
+        if len(sil_labels) > len(np.unique(sil_labels)) >= 2:
+            try:
+                metrics["Silhouette_Score"] = float(
+                    silhouette_score(X_norm[sil_idx], sil_labels, metric="cosine")
+                )
+            except Exception:
+                pass
 
-        # mAP@R: mean Average Precision at R (R = number of same-class samples)
-        def mean_ap_at_r() -> float:
-            from sklearn.neighbors import NearestNeighbors
-
-            n = len(y)
-            nbrs = NearestNeighbors(n_neighbors=n, metric="euclidean")
-            nbrs.fit(X_norm)
-            indices = nbrs.kneighbors(X_norm, return_distance=False)[:, 1:]
-            aps = []
-            for i in range(n):
-                r = (
-                    int((y == y[i]).sum()) - 1
-                )  # number of same-class samples excluding self
-                if r == 0:
-                    continue
-                retrieved = indices[i, :r]
-                hits = y[retrieved] == y[i]
-                precisions = hits.cumsum() / (np.arange(len(hits)) + 1)
-                aps.append((precisions * hits).sum() / r)
-            return float(np.mean(aps)) if aps else 0.0
-
-        return {
-            "NMI": nmi,
-            "ARI": ari,
-            "Recall@1": recall_at_k(1),
-            "Recall@5": recall_at_k(5),
-            "Recall@10": recall_at_k(10),
-            "kNN_Acc_k1": knn_acc(1),
-            "kNN_Acc_k5": knn_acc(5),
-            "kNN_Acc_k20": knn_acc(20),
-            "Linear_Probing_Acc": lp_acc,
-            "mAP@R": mean_ap_at_r(),
-            "Purity": purity,
-            "Silhouette_Score": sil,
-        }
+    return metrics
 
 
 def visualize_umap(

@@ -45,7 +45,7 @@ entomokit <command> [options]
 - **AutoMM Classification**: Train, predict, evaluate, embed, GradCAM, and ONNX export
 - **Per-Class Evaluation Diagnostics**: `classify evaluate` writes confusion matrices, normalized recall matrix, per-class precision/recall/F1, and a confusion PDF for small label sets
 - **Environment Diagnostics**: `doctor` command reports missing/outdated dependencies and install suggestions
-- **Embedding Quality Metrics**: NMI, ARI, Recall@K, kNN accuracy, mAP@R, Silhouette, UMAP visualization
+- **Embedding Quality Metrics**: NMI, ARI, Recall@K, cross-validated kNN and linear-probe accuracy (incl. balanced accuracy), mAP@R, Silhouette, UMAP visualization
 - **Concurrent Segmentation**: Otsu/GrabCut methods process images concurrently via `--threads`; SAM3 uses a single-model serial path
 - **Comprehensive Logging**: Detailed logging with verbose mode and log file output
 - **AI Assistant Integration**: `entomokit-workflow` skill for guided conversational workflows with OpenCode, Claude Code, Codex, etc.
@@ -874,14 +874,25 @@ Pass `--overwrite` to delete `--out-dir` contents and re-extract embeddings.
 **Quality metrics**:
 | Metric | Description |
 |--------|-------------|
-| NMI | Normalized Mutual Information |
+| NMI | Normalized Mutual Information (true labels vs KMeans) |
 | ARI | Adjusted Rand Index |
-| Recall@1/5/10 | Retrieval recall at K |
-| kNN_Acc_k1/5/20 | k-NN classification accuracy |
-| Linear_Probing_Acc | Linear classifier accuracy |
-| mAP@R | Mean Average Precision at R |
+| Recall@1/5/10 | Retrieval recall at K; every query is in the denominator |
+| kNN_Acc_k1/5/20 | Cross-validated k-NN accuracy |
+| Linear_Probing_Acc | Cross-validated linear-probe accuracy |
+| Linear_Probing_Balanced_Acc | Cross-validated linear-probe balanced accuracy |
+| mAP@R | Mean Average Precision at R; queries with no non-self relevant item are excluded |
 | Purity | Cluster purity |
-| Silhouette_Score | Clustering quality |
+| Silhouette_Score | Cosine silhouette against the true labels |
+
+**Metric contract**:
+
+- kNN and linear probing are cross-validated with `StratifiedKFold(n_splits=min(5, smallest class count), shuffle=True, random_state=42)`.
+- Clustering uses KMeans with the true class count.
+- Some metrics cannot be computed and are written as an empty CSV cell / printed as `N/A`: clustering and linear probing when a class has a single sample, `Recall@K` when fewer than `k + 1` samples exist, clustering when there are fewer distinct embeddings than classes, and silhouette when it is undefined. Read `N/A` as "not computable", never as `0`.
+- `Recall@K` and `mAP@R` keep the definitions in the table above, so a single-class label set with more than one sample still yields `1.0` (every query finds a same-label neighbour) rather than `N/A`.
+- `--label-csv` must have unique `image` values and at least one `image` value matching an image **file** name in `--images-dir`. Duplicate rows and an empty overlap are rejected before any extraction; a directory whose name looks like an image does not count.
+- `--metrics-sample-size` caps the number of rows used by **all** quality metrics (clustering, Recall@K, kNN, mAP@R, silhouette, and linear probing) — it is not specific to the linear probe — and it is the main runtime knob. `mAP@R` still ranks every query against every other row, so its neighbour-index matrix grows with the square of the sample size (~800 MB at the default 10000); lower this value when memory is tight.
+- Values are **not numerically comparable with runs produced before 0.6.2**: the CV split, the silhouette distance metric, index-based self-exclusion in Recall@K and mAP@R, and unavailable-value handling all changed. Field names are unchanged, and `Linear_Probing_Balanced_Acc` is a new column inserted after `Linear_Probing_Acc` (all later columns shift right by one — select by header name, not position).
 
 ---
 

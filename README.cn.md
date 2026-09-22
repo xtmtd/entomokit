@@ -45,7 +45,7 @@ entomokit <command> [options]
 - **AutoMM 分类**：训练、预测、评估、嵌入、GradCAM、ONNX 导出
 - **类别级评估诊断**：`classify evaluate` 会输出混淆矩阵、按真实类别归一化的召回矩阵、每类 precision/recall/F1，以及类数较少时的混淆矩阵 PDF
 - **环境诊断**：`doctor` 命令输出依赖状态并给出安装/升级建议
-- **嵌入质量指标**：NMI、ARI、Recall@K、kNN 准确率、mAP@R、轮廓系数、UMAP 可视化
+- **嵌入质量指标**：NMI、ARI、Recall@K、交叉验证的 kNN 与线性探针准确率（含平衡准确率）、mAP@R、轮廓系数、UMAP 可视化
 - **并行分割**：Otsu/GrabCut 方法通过 `--threads` 并行处理图像；SAM3 使用单模型串行路径
 - **完整日志**：详细日志记录，支持详细模式和日志文件输出
 - **AI 助手集成**：`entomokit-workflow` skill 支持在 OpenCode、Claude Code、Codex 等工具中进行引导式对话工作流
@@ -885,14 +885,25 @@ entomokit classify embed \
 **质量指标**：
 | 指标 | 描述 |
 |--------|-------------|
-| NMI | 标准化互信息 |
+| NMI | 标准化互信息（真实标签 vs KMeans） |
 | ARI | 调整兰德指数 |
-| Recall@1/5/10 | K 值检索召回率 |
-| kNN_Acc_k1/5/20 | k-NN 分类准确率 |
-| Linear_Probing_Acc | 线性分类器准确率 |
-| mAP@R | R 处平均精度均值 |
+| Recall@1/5/10 | K 值检索召回率；分母包含全部查询样本 |
+| kNN_Acc_k1/5/20 | 交叉验证的 k-NN 准确率 |
+| Linear_Probing_Acc | 交叉验证的线性探针准确率 |
+| Linear_Probing_Balanced_Acc | 交叉验证的线性探针平衡准确率 |
+| mAP@R | R 处平均精度均值；无（除自身外）相关样本的查询不参与平均 |
 | Purity | 聚类纯度 |
-| Silhouette_Score | 聚类质量 |
+| Silhouette_Score | 基于真实标签的余弦轮廓系数 |
+
+**指标约定**：
+
+- kNN 与线性探针使用 `StratifiedKFold(n_splits=min(5, 最小类样本数), shuffle=True, random_state=42)` 交叉验证。
+- 聚类使用 KMeans，簇数等于真实类别数。
+- 部分指标无法计算时，在 CSV 中写为空单元格、终端打印 `N/A`：某类只有 1 个样本时的聚类与线性探针、样本数不足 `k + 1` 时的 `Recall@K`、去重后嵌入数少于簇数时的聚类、以及轮廓系数无定义时。`N/A` 表示“不可计算”，**不等于 0**。
+- `Recall@K` 与 `mAP@R` 始终按上表定义计算：单一类别且样本数大于 1 时结果为 `1.0`（每个查询都能找到同标签邻居），而不是 `N/A`。
+- `--label-csv` 的 `image` 值必须唯一，且至少有一个值与 `--images-dir` 中的图片**文件**名匹配；重复行与完全无交集都会在提取前报错，名字像图片的目录不算匹配。
+- `--metrics-sample-size` 限制的是**全部**质量指标（聚类、Recall@K、kNN、mAP@R、轮廓系数、线性探针）所用的样本数，并非只影响线性探针，也是主要的耗时调节项。`mAP@R` 仍需将每个查询与其余所有样本比较，其邻居索引矩阵随样本数平方增长（默认 10000 时约 800 MB）；内存紧张时请调低该值。
+- 这些数值与 **0.6.2 之前** 的运行结果不可直接比较：交叉验证划分、轮廓系数距离度量、Recall@K/mAP@R 的按索引自排除、不可计算值的表示方式都发生了变化。字段名保持不变，`Linear_Probing_Balanced_Acc` 是新增列，插在 `Linear_Probing_Acc` 之后（其后所有列右移一位，请按表头名取值而非列位置）。
 
 ---
 

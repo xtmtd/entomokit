@@ -323,6 +323,8 @@ out_dir/
 
 **嵌入质量指标**（有 `--label-csv` 时计算）：NMI, ARI, Recall@1/5/10, kNN_Acc_k1/5/20, Linear_Probing_Acc, mAP, Purity, Silhouette_Score
 
+*该列表早于 0.6.2 评估器修正：字段名仍然有效，但其记录的数值与 0.6.2 不可比（详见 `docs/superpowers/plans/2026-09-22-classify-embed-metrics-corrections.md`）。*
+
 **输出**：
 ```
 out_dir/

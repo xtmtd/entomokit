@@ -373,6 +373,10 @@ def visualize_umap(
         min_dist=min_dist,
         metric=metric,
         random_state=seed,
+        # UMAP forces n_jobs=1 when random_state is set (parallel + seed is not
+        # reproducible). Setting it here states that intent and avoids the
+        # misleading "n_jobs value 1 overridden to 1" warning.
+        n_jobs=1,
     )
     embedding_2d = reducer.fit_transform(embeddings)
 

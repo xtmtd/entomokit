@@ -19,8 +19,10 @@ def _append_um_columns(row: dict[str, Any], pixel_size_um: float) -> None:
     row["min_feret_um"] = row.get("min_feret_px", 0.0) * pixel_size_um
 
 
-def measure_one_mask(path: Path, pixel_size_um: float | None = None) -> dict[str, Any]:
-    row: dict[str, Any] = {"file_name": path.name}
+def measure_one_mask(
+    path: Path, pixel_size_um: float | None = None, file_name: str | None = None
+) -> dict[str, Any]:
+    row: dict[str, Any] = {"file_name": file_name or path.name}
     try:
         mask = load_binary_mask(path)
         mask = keep_largest_component(mask)
@@ -305,13 +307,23 @@ def run_batch(
     shutdown_flag: Callable[[], bool] | None = None,
 ) -> dict[str, int]:
     existing_rows = existing_rows or []
-    skip_set = {Path(row["file_name"]).stem for row in existing_rows if row.get("file_name")}
-    files = [p for p in iter_mask_files(mask_dir) if p.stem not in skip_set]
+    skip_set = {row["file_name"] for row in existing_rows if row.get("file_name")}
+    files = [
+        p
+        for p in iter_mask_files(mask_dir)
+        if p.relative_to(mask_dir).as_posix() not in skip_set
+    ]
     rows = [*existing_rows]
     for path in files:
         if shutdown_flag is not None and shutdown_flag():
             break
-        rows.append(measure_one_mask(path, pixel_size_um=pixel_size_um))
+        rows.append(
+            measure_one_mask(
+                path,
+                pixel_size_um=pixel_size_um,
+                file_name=path.relative_to(mask_dir).as_posix(),
+            )
+        )
     if not rows:
         rows = [
             {

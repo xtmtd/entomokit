@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Correction (2026-09-22):** 本文件描述的目录布局是 detcli 的**目标标准布局**，并不是
+> `segment`/`synthesize` 直接产出的中间产物。实际实现中两者都把图像写在 `images/` 下
+> （`segment` 用编码后的扁平样本 ID，`synthesize` 按目标相对路径镜像），注释写到各自
+> 的注释目录。标准 `JPEGImages/` 布局由后续转换/划分步骤（`split-csv` /
+> `annotation_writer`）生成。本文件正文与验收项中含 `JPEGImages/` 的表述按此理解。
+
 **Goal:** 将 `segment` 和 `synthesize` 的注释输出格式（COCO/YOLO/VOC 目录布局）对齐 detcli，使两个工具链产出的数据集可直接互用。
 
 **Architecture:** 新建 `src/common/annotation_writer.py` 封装 supervision 库的 `DetectionDataset` 保存逻辑，`SegmentationProcessor` 和 `SynthesisProcessor` 统一调用此模块写出注释；原有内部格式转换逻辑替换为 supervision 标准调用。

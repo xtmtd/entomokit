@@ -9,6 +9,27 @@ from pathlib import Path
 from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
 
 
+def _num_syntheses_type(value: str):
+    """Parse --num-syntheses: positive integer count or a fraction in (0, 1)."""
+    try:
+        num = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"invalid numeric value: {value!r}"
+        ) from None
+    if num != num or num in (float("inf"), float("-inf")):
+        raise argparse.ArgumentTypeError(f"value must be finite: {value!r}")
+    if num <= 0:
+        raise argparse.ArgumentTypeError(f"value must be positive: {value!r}")
+    if num < 1:
+        return num
+    if float(num).is_integer():
+        return int(num)
+    raise argparse.ArgumentTypeError(
+        "value must be a positive integer or a fraction between 0 and 1"
+    )
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "synthesize",
@@ -46,9 +67,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--num-syntheses",
         "-n",
+        type=_num_syntheses_type,
+        default=1,
+        help=(
+            "Positive integer = syntheses per target (backgrounds sampled with "
+            "replacement, no background-count cap); a fraction between 0 and 1 = "
+            "share of targets to sample, one synthesis each. Default: 1."
+        ),
+    )
+    p.add_argument(
+        "--seed",
         type=int,
-        default=10,
-        help="Number of syntheses per target image.",
+        default=42,
+        help="Base random seed for target sampling and task-local synthesis randomness.",
     )
     p.add_argument(
         "--area-ratio-min",
@@ -225,6 +256,7 @@ def run(args: argparse.Namespace) -> None:
             threads=args.threads,
             skip_existing=args.resume,
             shutdown_flag=get_shutdown_flag(),
+            seed=args.seed,
         )
 
         logger.info("Processing complete!")
@@ -233,6 +265,11 @@ def run(args: argparse.Namespace) -> None:
         if results.get("skipped"):
             logger.info(f"    (skipped {results['skipped']} already-existing syntheses)")
         logger.info(f"  Failed: {results['failed']}")
+        if results.get("uncreated"):
+            logger.info(
+                f"  Not attempted: {results['uncreated']} "
+                "(unreadable targets, failed backgrounds, or shutdown)"
+            )
         logger.info(f"  Output files: {results['output_files']}")
 
     except Exception:

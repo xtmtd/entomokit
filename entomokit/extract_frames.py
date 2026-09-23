@@ -96,6 +96,25 @@ def run(args: argparse.Namespace) -> None:
     check_output_dir(out_dir, args.resume, args.overwrite)
     save_log(out_dir, args)
 
+    # Record/validate output-affecting parameters on every run so that the
+    # first --resume cannot silently change them (a plain non-resume run only
+    # reaches here with an empty out-dir, so the recorded value is safe).
+    from src.common.resume import check_resume_params
+
+    # Frame numbering is positional, so a resume with different extraction
+    # parameters would overwrite existing frames with different content.
+    check_resume_params(
+        out_dir,
+        "extract-frames",
+        {
+            "interval_ms": args.interval,
+            "image_format": args.out_image_format,
+            "max_frames": args.max_frames,
+            "start_time": args.start_time,
+            "end_time": args.end_time,
+        },
+    )
+
     # Accept single video file OR directory
     if input_path.is_file():
         actual_input_dir = input_path.parent
@@ -127,7 +146,7 @@ def run(args: argparse.Namespace) -> None:
 
     # Single file mode: set filter attribute for get_video_files
     if single_file is not None:
-        extractor._single_file_filter = single_file.name
+        extractor._single_file_filter = single_file
 
     stats = extractor.extract_all(show_progress=not args.quiet)
 

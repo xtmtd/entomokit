@@ -1,59 +1,58 @@
-"""Tests for clean --recursive flag."""
+"""Tests for clean's fixed recursive + mirrored-output contract."""
+
+from pathlib import Path
 
 import pytest
-from pathlib import Path
+from PIL import Image
+
 from src.cleaning.processor import ImageCleaner
 
 
-def test_recursive_finds_images_in_subdirs(tmp_path):
-    """Recursive mode collects images from nested directories."""
-    sub = tmp_path / "input" / "subdir"
-    sub.mkdir(parents=True)
-    from PIL import Image
+def _write(path: Path, color=(255, 0, 0), size=(10, 10)) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color=color).save(path)
 
-    img = Image.new("RGB", (10, 10), color=(255, 0, 0))
-    img.save(sub / "test.jpg")
 
-    out_dir = tmp_path / "output"
-    out_dir.mkdir()
+def test_clean_always_scans_recursively(tmp_path):
+    _write(tmp_path / "input" / "subdir" / "test.jpg")
 
     cleaner = ImageCleaner(
         input_dir=str(tmp_path / "input"),
-        output_dir=str(out_dir),
+        output_dir=str(tmp_path / "output"),
         dedup_mode="none",
     )
-    results = cleaner.process_directory(
-        log_path=str(tmp_path / "log.txt"), recursive=True
-    )
+    results = cleaner.process_directory(log_path=str(tmp_path / "log.txt"))
     assert results["processed"] == 1
+    assert (tmp_path / "output" / "subdir" / "test.jpg").exists()
 
 
-def test_non_recursive_misses_subdir_images(tmp_path):
-    """Non-recursive mode should NOT pick up images in subdirs."""
-    sub = tmp_path / "input" / "subdir"
-    sub.mkdir(parents=True)
-    from PIL import Image
+def test_same_named_images_in_different_subdirs_do_not_overwrite(tmp_path):
+    _write(tmp_path / "input" / "a" / "same.jpg", color=(255, 0, 0))
+    _write(tmp_path / "input" / "b" / "same.jpg", color=(0, 0, 255))
 
-    img = Image.new("RGB", (10, 10))
-    img.save(sub / "test.jpg")
-
-    out_dir = tmp_path / "output"
-    out_dir.mkdir()
-
+    out = tmp_path / "output"
     cleaner = ImageCleaner(
-        input_dir=str(tmp_path / "input"),
-        output_dir=str(out_dir),
-        dedup_mode="none",
+        input_dir=str(tmp_path / "input"), output_dir=str(out), dedup_mode="none"
     )
-    results = cleaner.process_directory(
-        log_path=str(tmp_path / "log.txt"), recursive=False
-    )
-    assert results["processed"] == 0
+    results = cleaner.process_directory(log_path=str(tmp_path / "log.txt"))
+
+    assert results["processed"] == 2
+    assert (out / "a" / "same.jpg").exists()
+    assert (out / "b" / "same.jpg").exists()
+    assert (out / "a" / "same.jpg").read_bytes() != (out / "b" / "same.jpg").read_bytes()
+
+
+def test_clean_parser_has_no_recursive_or_flatten() -> None:
+    from entomokit.main import _build_parser
+
+    parser = _build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["clean", "--input-dir", "in", "--out-dir", "out", "--recursive"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["clean", "--input-dir", "in", "--out-dir", "out", "--flatten"])
 
 
 def test_clean_results_count_invalid_images_as_errors(tmp_path):
-    from PIL import Image
-
     input_dir = tmp_path / "input"
     input_dir.mkdir(parents=True)
     output_dir = tmp_path / "output"
@@ -68,9 +67,7 @@ def test_clean_results_count_invalid_images_as_errors(tmp_path):
         dedup_mode="none",
         threads=1,
     )
-    results = cleaner.process_directory(
-        log_path=str(tmp_path / "log.txt"), recursive=False
-    )
+    results = cleaner.process_directory(log_path=str(tmp_path / "log.txt"))
 
     assert results["total"] == 2
     assert results["processed"] == 1
@@ -78,8 +75,6 @@ def test_clean_results_count_invalid_images_as_errors(tmp_path):
 
 
 def test_phash_reservation_is_removed_when_saving_fails(tmp_path, monkeypatch):
-    from PIL import Image
-
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "output"
     input_dir.mkdir()

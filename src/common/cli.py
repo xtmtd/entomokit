@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 
 _shutdown_requested = False
+_resolved_commit: Optional[str] = None
 _capture_file_handle = None
 _capture_stdout = None
 _capture_stderr = None
@@ -145,6 +146,38 @@ def setup_logging(
     return logging.getLogger(__name__)
 
 
+def _probe_git_commit() -> str:
+    """Best-effort short Git commit id for the current checkout."""
+    try:
+        import subprocess
+
+        root = Path(__file__).resolve().parent.parent.parent
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _get_commit() -> str:
+    """Resolve commit metadata once per process, falling back to Git."""
+    global _resolved_commit
+    if _resolved_commit is not None:
+        return _resolved_commit
+    from entomokit._version import __commit__
+
+    commit = __commit__
+    if not commit or commit == "unknown":
+        commit = _probe_git_commit()
+    _resolved_commit = commit or "unknown"
+    return _resolved_commit
+
+
 def save_log(output_dir: Path, args, log_filename: str = "log.txt") -> None:
     """Save command log to file.
 
@@ -157,7 +190,11 @@ def save_log(output_dir: Path, args, log_filename: str = "log.txt") -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     log_path = output_dir / log_filename
+    from entomokit._version import __version__
+
     with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"EntomoKit version: {__version__}\n")
+        f.write(f"Commit: {_get_commit()}\n")
         f.write(f"Command: {' '.join(sys.argv)}\n")
         f.write(f"Timestamp: {datetime.now().isoformat()}\n")
         f.write("Arguments:\n")

@@ -73,6 +73,14 @@ def run(args: argparse.Namespace) -> None:
     logger = setup_logging(out_dir, verbose=args.verbose)
     save_log(out_dir, args)
 
+    # Record/validate output-affecting parameters on every run so that the
+    # first --resume cannot silently change them (a plain non-resume run only
+    # reaches here with an empty out-dir, so the recorded value is safe).
+    from src.common.resume import check_resume_params
+
+    # A resume must not mix measurements taken at a different scale.
+    check_resume_params(out_dir, "measure", {"pixel_size_um": args.pixel_size_um})
+
     existing_rows: list[dict[str, str]] = []
     if args.resume:
         import csv as _csv

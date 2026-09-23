@@ -993,3 +993,45 @@ def test_overlay_receives_normalized_mask_not_raw(
     assert mask.min() >= 0.0
     assert mask.max() <= 1.0
     np.testing.assert_allclose(mask, expected)
+
+
+def test_process_image_writes_figure_under_encoded_nested_name(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from src.classification import cam
+
+    image_path = tmp_path / "nested" / "image.png"
+    image_path.parent.mkdir()
+    Image.new("RGB", (32, 32), (200, 200, 200)).save(image_path)
+    fig_dir = tmp_path / "figures"
+    fig_dir.mkdir()
+
+    class FakeModel(torch.nn.Module):
+        class_labels = ["a", "b"]
+
+        def forward(self, x):
+            return torch.tensor([[1.0, 2.0]], device=x.device).repeat(x.shape[0], 1)
+
+    monkeypatch.setattr(
+        cam,
+        "show_cam_on_image",
+        lambda *_args, **_kwargs: np.full((32, 32, 3), 240, dtype=np.uint8),
+    )
+    record = cam.process_image(
+        img_path=image_path,
+        label="x",
+        model=FakeModel(),
+        preprocess=lambda _image: torch.zeros(3, 32, 32),
+        cam_extractor=lambda **_kwargs: [np.ones((32, 32), dtype=np.float32)],
+        device=torch.device("cpu"),
+        fig_dir=fig_dir,
+        array_dir=None,
+        image_weight=0.5,
+        fig_format="png",
+        save_npy="none",
+        output_name=cam.output_stem("nested/image.png"),
+        source_image="nested/image.png",
+    )
+
+    assert (fig_dir / "nested__image_cam.png").exists()
+    assert record["figure_path"].endswith("nested__image_cam.png")

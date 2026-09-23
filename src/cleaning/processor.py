@@ -33,6 +33,8 @@ except ImportError:
     tqdm = None
 
 
+from src.common.files import IMAGE_EXTENSIONS, iter_files
+
 INVALID_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -121,6 +123,52 @@ def resize_short_edge(img: "Image.Image", short_size: int) -> "Image.Image":
     return img.resize(new_size, Image.Resampling.LANCZOS)
 
 
+def _border_median_rgb(img: "Image.Image") -> tuple:
+    """Median RGB over the four outermost rows/columns of the image."""
+    import statistics
+
+    w, h = img.size
+    pixels = img.convert("RGB").load()
+    border = []
+    for x in range(w):
+        border.append(pixels[x, 0])
+        if h > 1:
+            border.append(pixels[x, h - 1])
+    for y in range(1, h - 1):
+        border.append(pixels[0, y])
+        if w > 1:
+            border.append(pixels[w - 1, y])
+    return tuple(round(statistics.median(p[c] for p in border)) for c in range(3))
+
+
+def pad_to_square(img: "Image.Image", color: str = "none") -> "Image.Image":
+    """Return image unchanged for none, otherwise center it on a square canvas."""
+    if color == "none":
+        return img
+    if color == "median":
+        fill = _border_median_rgb(img)
+    elif color == "black":
+        fill = (0, 0, 0)
+    elif color == "white":
+        fill = (255, 255, 255)
+    else:
+        raise ValueError(f"Unknown pad color: {color}")
+
+    w, h = img.size
+    side = max(w, h)
+
+    if img.mode in ("RGBA", "LA", "P"):
+        rgba = img.convert("RGBA")
+        source = Image.new("RGB", rgba.size, fill)
+        source.paste(rgba, mask=rgba.split()[-1])
+    else:
+        source = img.convert("RGB")
+
+    canvas = Image.new("RGB", (side, side), fill)
+    canvas.paste(source, ((side - w) // 2, (side - h) // 2))
+    return canvas
+
+
 class ImageCleaner:
     """Clean and deduplicate images."""
 
@@ -134,6 +182,7 @@ class ImageCleaner:
         phash_threshold: int = 5,
         threads: int = 12,
         keep_exif: bool = False,
+        pad_color: str = "none",
     ):
         if Image is None:
             raise ImportError("Pillow is required. Install with: pip install Pillow")
@@ -146,10 +195,11 @@ class ImageCleaner:
         self.phash_threshold = phash_threshold
         self.threads = threads
         self.keep_exif = keep_exif
+        self.pad_color = pad_color
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.used_names: Set[str] = set()
+        self.used_names_by_dir: Dict[Path, Set[str]] = {}
         self.dedup_hashes_md5: Dict[str, str] = {}
         self.dedup_hashes_phash: List[Tuple[int, str]] = []
 
@@ -167,7 +217,7 @@ class ImageCleaner:
         for f in self.output_dir.rglob("*") if self.output_dir.exists() else []:
             if not f.is_file():
                 continue
-            self.used_names.add(f.stem.lower())
+            self.used_names_by_dir.setdefault(f.parent, set()).add(f.stem.lower())
             try:
                 img = Image.open(f)
                 if self.dedup_mode in ("md5", "md5+phash"):
@@ -246,10 +296,12 @@ class ImageCleaner:
                 pass  # no dedup checks
 
             img = resize_short_edge(img, self.out_short_size)
+            img = pad_to_square(img, self.pad_color)
 
             dst_dir.mkdir(parents=True, exist_ok=True)
             base = clean_filename(src.stem)
-            base = ensure_unique_prefix(base, self.used_names, self.name_lock)
+            used = self.used_names_by_dir.setdefault(dst_dir, set())
+            base = ensure_unique_prefix(base, used, self.name_lock)
             out_ext = "." + self.out_image_format.lower()
             dst = dst_dir / f"{base}{out_ext}"
 
@@ -286,33 +338,14 @@ class ImageCleaner:
         self,
         input_dir: Optional[str] = None,
         log_path: Optional[str] = "log.txt",
-        recursive: bool = False,
-        flatten: bool = False,
     ) -> dict:
-        """Process all images in directory.
-
-        When recursive=True and flatten=False (default), mirror the subdirectory
-        structure into the output directory. Use flatten=True to collect all
-        outputs into a single flat directory (legacy behaviour).
-        """
+        """Process all images recursively, mirroring input-relative paths."""
         input_dir = Path(input_dir or self.input_dir)
 
         if not input_dir.exists():
             raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
 
-        IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
-        if recursive:
-            files = [
-                p
-                for p in input_dir.rglob("*")
-                if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
-            ]
-        else:
-            files = [
-                p
-                for p in input_dir.iterdir()
-                if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
-            ]
+        files = iter_files(input_dir, IMAGE_EXTENSIONS)
 
         if not files:
             return {"total": 0, "processed": 0, "skipped": 0, "errors": 0}
@@ -324,8 +357,6 @@ class ImageCleaner:
         log_lock = Lock()
 
         def _dst_dir_for(src: Path) -> Path:
-            if not recursive or flatten:
-                return self.output_dir
             rel = src.parent.relative_to(input_dir)
             return self.output_dir / rel
 

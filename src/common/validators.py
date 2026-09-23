@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 
-IMAGE_EXTENSIONS: Set[str] = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+IMAGE_EXTENSIONS: Set[str] = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp'}
 VIDEO_EXTENSIONS: Set[str] = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.m4v', '.mpeg', '.mpg', '.wmv', '.3gp', '.ts'}
 
 

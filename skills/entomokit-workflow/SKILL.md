@@ -88,9 +88,9 @@ Short template:
 
 ## Clean Precheck
 
-- Before `clean`, detect whether input contains nested class folders.
-- If nested folders are present, explain that first run may miss files without `--recursive`.
-- Ask user to confirm `--recursive` strategy before execution and before any merge/clean follow-up.
+- `clean` always scans recursively and mirrors nested folders under `cleaned_images/`; there is no `--recursive` flag to confirm.
+- If nested class folders are present, explain that outputs keep the same subdirectory structure, so same-named files in different folders stay separate.
+- Ask whether to pad non-square images (`--pad-color none|median|black|white`, default `none`) before execution and before any merge/clean follow-up.
 
 ## Label Strategy Confirmation
 

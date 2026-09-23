@@ -38,7 +38,7 @@ entomokit <command> [options]
 - **灵活的修复策略**：OpenCV 形态学操作、基于 SAM3 或 LaMa 的孔洞填充
 - **标注输出**：COCO JSON、VOC Pascal XML、YOLO TXT
 - **视频抽帧**：多线程提取，支持时间范围设定
-- **图像清洗**：调整大小、去重（MD5/Phash）、规范化命名；支持递归模式
+- **图像清洗**：调整大小、去重（MD5/Phash）、规范化命名；始终递归扫描
 - **图像增强**：基于 albumentations 的预设/自定义增强，支持确定性随机种子
 - **数据集划分**：基于比例或数量的 train/val/test 划分，支持分层采样
 - **图像合成**：高级合成功能，支持旋转、颜色匹配、黑区规避
@@ -282,6 +282,24 @@ models/big-lama/
 
 ## 使用方法
 
+### 目录输入与输出策略
+
+本策略适用于所有面向目录的命令（`extract-frames`、`segment`、`measure`、
+`synthesize`、`clean`、`augment`），以及 `classify embed`、`classify cam`、
+`classify predict` 的目录发现：
+
+- 面向目录的命令默认递归扫描；不再提供 `--recursive` 参数，也没有扁平化选项。
+- 普通文件输出会镜像输入文件相对于输入根目录的路径。例如
+  `clean --input-dir in --out-dir out` 会把 `in/beetles/a.jpg` 输出为
+  `out/cleaned_images/beetles/a.jpg`，因此不同子目录下的同名文件不会互相覆盖。
+- `segment` 是刻意的例外：它不镜像输入路径，而是把所有图像平铺到 `images/`
+  下，并把每个输入相对路径编码为唯一的扁平样本 ID（可读词干加路径摘要，例如
+  `a__4cabcf2b3682`），注释写到各自的注释目录。完整的标准数据集布局（例如
+  Pascal VOC 的 `JPEGImages/`）由后续转换/划分步骤生成，而不是 `segment`
+  直接产出。
+- CSV 驱动的命令（`split-csv`，以及显式传入 `--input-csv` 的分类命令）仍以
+  CSV 为准，不适用本目录策略。
+
 推荐的工作流命令顺序：
 
 1. `extract-frames`
@@ -367,7 +385,7 @@ entomokit segment \
 | `--annotation-format` | `coco`、`voc`、`yolo` | 无 |
 | `--coco-bbox-format` | `xywh`、`xyxy` | `xywh` |
 | `--threads` | Otsu/GrabCut 并行图像工作线程数（默认: 8）；SAM3 保持串行 | 8 |
-| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
+| `--resume` | 仅当精确的单 mask 输出已存在时跳过该输入；多 mask 输入始终重新处理 | 否 |
 | `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
 
 **输出结构（COCO 示例）：**
@@ -399,6 +417,21 @@ output_dir/
 - `area` 在非 `*-bbox` 方法下为**掩码像素面积**（`np.sum(mask > 0)`），在 `*-bbox` 方法下为**边界框面积**（`w × h`）。
 - `segmentation` 在非 `*-bbox` 方法下为 polygon 坐标数组（`[x1,y1,x2,y2,...]`），在 `*-bbox` 方法下为空。
 
+`segment` 递归扫描 `--input-dir`，把所有图像写入 `images/`（注释写入上述各自的
+注释目录），不镜像输入路径。每个输入相对路径会被编码为唯一、文件系统安全的
+样本 ID（可读词干加路径摘要，例如 `a__4cabcf2b3682`），并用于图像文件、VOC
+XML、YOLO TXT、SegmentationClass 掩码、COCO 文件名和
+`ImageSets/Main/default.txt`。因此不同子目录下的同名图像会生成不同样本，
+`--resume` 也会检查该映射产物，而非按基名 glob。只有精确的单 mask 输出才视为
+完成：多 mask 输入（`{sample_id}_01.png`、`_02` ...）始终重新处理，避免把写
+了一半的结果当作已完成。使用 `--resume` 时，统一的 `annotations.coco.json` 会
+与上一次的文件合并，被跳过的样本保留其标注。完整的标准数据集布局（例如
+Pascal VOC 的 `JPEGImages/`）由后续转换/划分步骤生成，而不是 `segment` 直接
+产出。
+
+分割方法未返回任何掩码的图像会在日志中记录完整源路径，并写入
+`out-dir/no_mask_images.txt`，方便后续核实。
+
 ---
 
 ### measure 命令
@@ -420,7 +453,7 @@ entomokit measure \
 
 | 参数 | 描述 | 默认值 |
 |-----------|-------------|---------|
-| `--mask-dir`, `-i` | 输入掩码目录 | 必填 |
+| `--mask-dir`, `-i` | 输入掩码目录（递归扫描） | 必填 |
 | `--out-dir`, `-o` | 输出目录 | 必填 |
 | `--pixel-size-um` | 像素尺寸（`um/px`，微米每像素） | 无 |
 | `--verbose`, `-v` | 启用详细日志 | 否 |
@@ -434,6 +467,9 @@ output_dir/
 ├── metrics_summary.csv      # 汇总统计与按原因聚合的告警计数
 └── metric_definitions.csv   # 指标说明（中英文字段 + 单位/公式）
 ```
+
+`metrics.csv` 中的 `file_name` 是掩码相对于 `--mask-dir` 的路径（例如
+`beetles/a.png`），既避免嵌套同名掩码冲突，也是 `--resume` 使用的键。
 
 **关于体长/体宽的谨慎说明：**
 - `body_length_*` 与 `body_width_*` 是基于二值掩码几何形态的估计值，不等同于严格解剖学实测值。
@@ -478,6 +514,10 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 
 **支持的视频格式**：mp4、mov、avi、mkv、webm、flv、m4v、mpeg、mpg、wmv、3gp、ts
 
+目录输入会被递归扫描。帧写入
+`out-dir/<视频的输入相对目录>/<视频词干>/`，因此不同子目录下的同名视频会
+得到独立的帧目录树；`--resume` 检查映射后的帧目录。
+
 ---
 
 ### clean 命令
@@ -485,16 +525,16 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 清洗和去重图像，规范化命名。
 
 ```bash
-# 基本用法（MD5 去重）
+# 基本用法（MD5 去重）；递归扫描并镜像子目录结构
 entomokit clean --input-dir images/raw/ --out-dir images/cleaned/
 
-# 递归扫描 + 感知哈希去重
+# 感知哈希去重
 entomokit clean --input-dir images/ --out-dir cleaned/ \
-    --recursive --dedup-mode phash --phash-threshold 5
+    --dedup-mode phash --phash-threshold 5
 
-# 调整短边为 512px
+# 调整短边为 512px，并用边界中位色填充为正方形
 entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
-    --out-short-size 512 --out-image-format png
+    --out-short-size 512 --out-image-format png --pad-color median
 
 # 保持原始尺寸和 EXIF 数据
 entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
@@ -503,11 +543,10 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 
 | 参数 | 描述 | 默认值 |
 |-----------|-------------|---------|
-| `--input-dir` | 输入目录 | 必填 |
+| `--input-dir` | 输入目录（递归扫描） | 必填 |
 | `--out-dir` | 输出目录 | 必填 |
-| `--recursive` | 扫描子目录；默认输出镜像输入子目录结构 | 否 |
-| `--flatten` | 与 `--recursive` 配合使用：将所有输出收集到单个扁平目录 | 否 |
 | `--out-short-size` | 短边大小（-1 = 原始） | 512 |
+| `--pad-color` | 将非正方形图像填充为正方形：`none`、`median`、`black`、`white`（`median` 使用边界像素的 RGB 中位数） | none |
 | `--dedup-mode` | `none`、`md5`、`phash`、`md5+phash`（先执行 md5，再对剩余图片执行 phash） | md5 |
 | `--phash-threshold` | Phash 相似度阈值 | 5 |
 | `--out-image-format` | jpg/png/tif | jpg |
@@ -515,6 +554,8 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 | `--threads` | 并行线程数 | 12 |
 | `--resume` | 允许进入非空输出目录，不报错 | 否 |
 | `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
+
+清洗后的图像写入 `out-dir/cleaned_images/<输入相对路径>`。先缩放，后填充。
 
 ---
 
@@ -549,9 +590,14 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 **输出：**
 ```
 output_dir/
-├── images/
+├── images/               # 镜像每张输入图的子目录路径
+│   └── <子目录>/source_aug01.png
 └── augment_manifest.json
 ```
+
+输入目录会被递归扫描。每次输出都保留 `_augNN` 后缀（即使 `--multiply 1`），
+因此永远不会覆盖原始文件名。manifest 中的 `original` 与 `augmented` 均为
+输入相对路径。
 
 ---
 
@@ -660,7 +706,8 @@ entomokit synthesize \
 | `--target-dir` | 目标图像（带 alpha 通道） | 必填 |
 | `--background-dir` | 背景图像 | 必填 |
 | `--out-dir` | 输出目录 | 必填 |
-| `--num-syntheses` | 每个目标的合成次数 | 10 |
+| `--num-syntheses` | 正整数 = 每个目标的合成次数；0 到 1 之间的小数 = 采样的目标比例，每个选中目标生成一张 | 1 |
+| `--seed` | 目标采样与任务局部合成随机性的基础随机种子 | 42 |
 | `--annotation-output-format` | `coco`、`voc`、`yolo` | `coco` |
 | `--coco-bbox-format` | `xywh`、`xyxy` | `xywh` |
 | `--rotate` | 最大旋转角度 | 0 |
@@ -675,11 +722,24 @@ entomokit synthesize \
 **输出（COCO）：**
 ```
 output_dir/
-├── images/
-│   ├── target_01.png
-│   └── ...
+├── images/                 # 镜像每个目标的子目录路径
+│   └── <子目录>/target_01.png
 └── annotations.coco.json
 ```
+
+目标与背景目录都会被递归扫描。每个合成任务独立采样背景（有放回），因此
+每个目标生成 N 张时不受背景数量限制。小数 `--num-syntheses`（如 `0.5`）
+在固定 `--seed` 下会确定性地选取该比例的目标，每个选中目标生成一张。
+标注与图像使用相同的目标相对路径。输出文件名为 `{target_stem}_{NN}`；同一目录下
+仅扩展名不同的同名目标（例如 `a.png` 与 `a.tif`）会在词干中加入短路径摘要，避免
+互相覆盖。使用 `--resume` 时，统一的 `annotations.coco.json` 会与上一次的文件
+合并，被跳过的目标保留其标注。
+
+`--target-dir` 必须是 RGBA 抠图（例如 mask 模式的 `segment` 输出：
+`--segmentation-method sam3`、`otsu` 或 `grabcut`）。bbox 模式裁剪输出
+（`sam3-bbox`、`otsu-bbox`、`grabcut-bbox`）、修复图（repaired_images）及原始
+照片都是 RGB，会被拒绝。若所有目标都加载失败，错误信息会列出实际观测到的
+模式（例如 `18 RGB`）。
 
 **输出（YOLO）：**
 ```
@@ -764,6 +824,7 @@ entomokit classify train \
 | `--patience` | 早停耐心值 | 10 |
 | `--top-k` | 检查点平均数量 | 3 |
 | `--focal-loss` | 启用 focal loss | 否 |
+| `--seed` | 传给 AutoMM 的随机种子，用于可复现训练 | 0 |
 | `--device` | `auto/cpu/cuda/mps` | `auto` |
 | `--batch-size` | 批量大小 | 32 |
 | `--num-workers` | DataLoader 工作线程数 | 4 |
@@ -809,6 +870,10 @@ entomokit classify predict \
 - 如果 CSV 的 `image` 值已经是可读路径，则直接使用 CSV
 - 如果 CSV 的 `image` 值是文件名/相对路径，还需提供 `--images-dir`
 - 如果只提供 `--images-dir`，则预测该目录下的所有图像
+
+目录发现是递归的。发现的图像以相对于 `--images-dir` 的路径记录（例如
+`beetles/a.jpg`），因此嵌套的同名图像不会混淆。通过 `--input-csv` 显式提供
+的 CSV 路径保持不变。
 
 使用 `--overwrite` 可删除 `--out-dir` 内容并重新预测所有输入。
 
@@ -876,9 +941,11 @@ entomokit classify embed \
 ```
 
 **输出**：
-- `embeddings.csv` — 特征向量（feat_0, feat_1, ...）
+- `embeddings.csv` — 特征向量（feat_0, feat_1, ...）；`image` 列是相对于 `--images-dir` 的路径（例如 `beetles/a.jpg`）
 - `metrics.csv` — 质量指标
 - `umap.pdf` — UMAP 可视化（使用 `--visualize`）
+
+`--images-dir` 会被递归扫描。
 
 使用 `--overwrite` 可删除 `--out-dir` 内容并重新提取嵌入。
 
@@ -904,6 +971,7 @@ entomokit classify embed \
 - `--label-csv` 的 `image` 值必须唯一，且至少有一个值与 `--images-dir` 中的图片**文件**名匹配；重复行与完全无交集都会在提取前报错，名字像图片的目录不算匹配。
 - `--metrics-sample-size` 限制的是**全部**质量指标（聚类、Recall@K、kNN、mAP@R、轮廓系数、线性探针）所用的样本数，并非只影响线性探针，也是主要的耗时调节项。`mAP@R` 仍需将每个查询与其余所有样本比较，其邻居索引矩阵随样本数平方增长（默认 10000 时约 800 MB）；内存紧张时请调低该值。
 - 这些数值与 **0.6.2 之前** 的运行结果不可直接比较：交叉验证划分、轮廓系数距离度量、Recall@K/mAP@R 的按索引自排除、不可计算值的表示方式都发生了变化。字段名保持不变，`Linear_Probing_Balanced_Acc` 是新增列，插在 `Linear_Probing_Acc` 之后（其后所有列右移一位，请按表头名取值而非列位置）。
+- 这些 kNN/评估修正已在 `0.6.2` 发布；`0.7.0` 不改变嵌入指标算法。
 
 ---
 
@@ -1021,7 +1089,9 @@ entomokit update --yes     # 安装，不提示
 
 ### 日志
 
-所有命令会在输出目录保存 `log.txt`，包含：
+所有命令会在输出目录保存 `log.txt`，开头依次为：
+- `EntomoKit version:`（例如 `0.7.0`）
+- `Commit:`（短 Git 提交 id，非仓库环境为 `unknown`）
 - 完整命令行
 - 时间戳
 - 所有参数值

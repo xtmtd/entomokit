@@ -1,7 +1,7 @@
 # entomokit 重构设计文档
 
 **日期**: 2026-03-24  
-**最后更新**: 2026-03-24（补充 segment 注释格式、clean/split-csv/extract-frames 功能扩展、classify CPU 线程控制）  
+**最后更新**: 2026-09-22（0.7.0：全局目录输入/输出策略、clean 默认递归与 `--pad-color`、synthesize 计数语义与 `--seed`、classify train `--seed`、日志版本/提交头）
 **状态**: 已确认，待实现  
 
 ---
@@ -150,6 +150,35 @@ def register(subparsers):
 
 ## 5. 各命令参数规范
 
+### 5.0 全局目录输入与输出策略（0.7.0 起）
+
+```text
+面向目录的命令默认递归扫描。
+普通文件输出镜像每个输入文件相对于输入根目录的路径。
+segment 是例外：它不镜像输入目录，而是把所有图像平铺到 images/ 下，并写到各自的
+注释目录，同时把输入相对路径编码为唯一的扁平样本 ID。完整的标准数据集布局
+（例如 Pascal VOC 的 JPEGImages/）由后续转换/划分步骤生成。
+普通目录处理命令不提供扁平化选项。
+CSV 驱动的命令仍以 CSV 为准，不适用本目录策略。
+clean --pad-color none|median|black|white 默认 none。
+```
+
+适用命令：`extract-frames`、`segment`、`measure`、`synthesize`、`clean`、
+`augment`，以及 `classify embed` / `classify cam` / `classify predict` 的目录发现。
+
+- `extract-frames`：视频目录递归扫描，帧写入
+  `out-dir/<视频输入相对目录>/<视频词干>/`，同名视频互不覆盖。
+- `measure`：掩码递归扫描，`metrics.csv` 的 `file_name` 为相对 `--mask-dir`
+  的路径，并作为 `--resume` 的键。
+- `segment`：递归扫描并把图像平铺到 `images/`（不镜像输入目录）；样本 ID = 可读词干 +
+  `sha256(相对路径)[:12]`（如 `a__4cabcf2b3682`），用于图像、VOC XML、
+  YOLO TXT、SegmentationClass 掩码、COCO 文件名与
+  `ImageSets/Main/default.txt`；`--resume` 检查该映射产物。
+- `synthesize`：目标与背景目录递归扫描，输出按目标相对路径镜像，背景采样
+  有放回。
+- `clean`：移除 `--recursive` / `--flatten`，始终递归并镜像；新增
+  `--pad-color`（`none`/`median`/`black`/`white`，默认 `none`）。
+
 ### 5.1 顶层独立命令
 
 这五个命令的业务逻辑基本保留，只是入口从 `python scripts/xxx.py` 迁移至 `entomokit xxx`，部分命令有功能扩展。
@@ -158,29 +187,42 @@ def register(subparsers):
 | --------------------------- | ------------------------ | --------------------------------- |
 | `entomokit segment`         | `scripts/segment.py`     | 入口改变 + 注释输出格式对齐 detcli |
 | `entomokit extract-frames`  | `scripts/extract_frames.py` | 入口改变 + `--input-dir` 支持单文件 |
-| `entomokit clean`           | `scripts/clean_figs.py`  | 入口改变 + 新增 `--recursive`      |
+| `entomokit clean`           | `scripts/clean_figs.py`  | 入口改变 + 默认递归 + 镜像输出 + `--pad-color` |
 | `entomokit split-csv`       | `scripts/split_dataset.py` | 入口改变 + 命令改名 + 新增 val/copy-images |
 | `entomokit synthesize`      | `scripts/synthesize.py`  | 入口改变 + 注释输出格式对齐 detcli |
 
 ### `entomokit segment` — 注释格式变更
 
-`segment` 和 `synthesize` 生成的注释文件格式与目录布局需与 detcli 保持一致（使用 `supervision` 库），规范如下：
+`segment` 和 `synthesize` 的注释文件命名与目录约定需与 detcli 兼容（使用 `supervision` 库）。
+**两者都把图像写在 `images/` 下**（`segment` 使用编码后的扁平样本 ID，`synthesize` 按目标
+相对路径镜像），注释写到各自的注释目录。完整的标准数据集布局（例如 Pascal VOC 的
+`JPEGImages/`）由后续转换/划分步骤（`split-csv` 或
+`annotation_writer.write_annotations`）生成，并不是这两个命令直接产出的中间产物。
 
-| 格式     | 目录布局                                                                                   | 说明                                       |
-| -------- | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| **COCO** | 图像与 JSON 同级平铺，JSON 文件名固定为 `annotations.coco.json`                               | bbox 格式由 `--coco-bbox-format` 控制，默认 `xywh`；支持 `xywh`/`xyxy` |
-| **YOLO** | `images/` + `labels/` 子目录，附带 `data.yaml`（含 `nc` 和带引号的 `names` 列表）              | 与 detcli 完全一致                         |
-| **VOC**  | `JPEGImages/` + `Annotations/` + `ImageSets/Main/default.txt`                               | 标准 Pascal VOC 布局                       |
+| 格式     | 图像目录  | 注释目录/文件 | 说明 |
+| -------- | --------- | ------------- | ---- |
+| **COCO** | `images/` | `annotations.coco.json`（unified）或 `annotations/*.json`（separate） | bbox 格式由 `--coco-bbox-format` 控制，默认 `xywh`；支持 `xywh`/`xyxy` |
+| **YOLO** | `images/` | `labels/*.txt` + `data.yaml`（含 `nc` 和带引号的 `names` 列表） | 与 detcli 布局兼容 |
+| **VOC**  | `images/` | `Annotations/*.xml`；`segment` 还写 `ImageSets/Main/default.txt`，mask 模式另写 `SegmentationClass/*.png` | 中间产物；标准 `JPEGImages/` 布局在后续步骤生成 |
 
 `segment` 新增参数：
 - `--annotation-format`：`coco`/`yolo`/`voc`，选择注释输出格式（原脚本已有该参数，对齐格式规范）
 - `--coco-bbox-format`：`xywh`/`xyxy`，COCO 格式时 bbox 的坐标约定，默认 `xywh`
 
-### `entomokit clean` — 新增参数
+### `entomokit clean` — 默认递归与填充
+
+`clean` 始终递归扫描 `--input-dir` 并把输出镜像到
+`out-dir/cleaned_images/<输入相对路径>`。不再提供 `--recursive` 或 `--flatten`。
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--recursive` | flag | False | 递归扫描 `--input-dir` 下的所有子目录 |
+| `--pad-color` | str | `none` | `none`/`median`/`black`/`white`；非 `none` 时先缩放再居中填充为正方形，`median` 取边界像素 RGB 中位数 |
+
+### `entomokit segment` — 递归输入与样本 ID 编码
+
+`segment` 递归扫描输入，把所有图像平铺到 `images/` 下（不镜像输入目录），把每个输入
+相对路径编码为唯一的扁平样本 ID（可读词干 + `sha256(相对路径)[:12]`）。`--resume` 依据该样本 ID
+检查映射后的输出产物，而非按基名 glob。
 
 ### `entomokit extract-frames` — `--input-dir` 增强
 
@@ -234,6 +276,7 @@ out_dir/
 | `--batch-size` | int | 32 | 训练 batch size |
 | `--num-workers` | int | 4 | DataLoader worker 数 |
 | `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动）；`device=cpu` 时设置 `torch.set_num_threads()` |
+| `--seed` | int | 0 | 传给 AutoMM `fit(seed=...)` 的随机种子，并记录到运行日志 |
 
 **增强预设映射**（基于 AutoGluon `model.timm_image.train_transforms`）：
 

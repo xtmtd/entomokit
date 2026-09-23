@@ -461,3 +461,101 @@ def test_train_uses_multiclass_problem_type_for_three_or_more_labels(
     )
 
     assert fake_predictor.init_calls[-1]["problem_type"] == "multiclass"
+
+
+def _train_kwargs(tmp_path: Path, images_dir: Path, train_csv: Path, **overrides):
+    kwargs = dict(
+        train_csv=train_csv,
+        images_dir=images_dir,
+        base_model="convnextv2_femto",
+        out_dir=tmp_path / "out",
+        augment_transforms=["center_crop"],
+        max_epochs=5,
+        time_limit_hours=1.0,
+        focal_loss=False,
+        focal_loss_gamma=1.0,
+        device="cpu",
+        batch_size=8,
+        num_workers=2,
+        num_threads=0,
+        resume=False,
+        learning_rate=None,
+        weight_decay=None,
+        warmup_steps=None,
+        patience=None,
+        top_k=None,
+    )
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_train_defaults_seed_to_zero(monkeypatch, tmp_path: Path) -> None:
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    train_csv = tmp_path / "train.csv"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    (images_dir / "sample_0.jpg").write_bytes(b"fake")
+    (images_dir / "sample_1.jpg").write_bytes(b"fake")
+    _write_train_csv(train_csv)
+
+    trainer_mod.train(**_train_kwargs(tmp_path, images_dir, train_csv))
+
+    assert fake_predictor.fit_calls[-1]["seed"] == 0
+
+
+def test_train_forwards_seed_to_automm(monkeypatch, tmp_path: Path) -> None:
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    train_csv = tmp_path / "train.csv"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    (images_dir / "sample_0.jpg").write_bytes(b"fake")
+    (images_dir / "sample_1.jpg").write_bytes(b"fake")
+    _write_train_csv(train_csv)
+
+    trainer_mod.train(**_train_kwargs(tmp_path, images_dir, train_csv, seed=123))
+
+    assert fake_predictor.fit_calls[-1]["seed"] == 123
+
+
+def test_train_cli_parser_seed_default_and_forwarding(tmp_path, monkeypatch) -> None:
+    from entomokit.main import _build_parser
+    from entomokit.classify import train as train_cli
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "classify", "train",
+            "--train-csv", "t.csv",
+            "--images-dir", "images",
+            "--out-dir", str(tmp_path / "out"),
+            "--seed", "123",
+        ]
+    )
+    assert args.seed == 123
+
+    default_args = parser.parse_args(
+        [
+            "classify", "train",
+            "--train-csv", "t.csv",
+            "--images-dir", "images",
+            "--out-dir", str(tmp_path / "out"),
+        ]
+    )
+    assert default_args.seed == 0
+
+    captured = {}
+
+    def fake_train(**kwargs):
+        captured.update(kwargs)
+        return tmp_path / "out" / "model"
+
+    monkeypatch.setattr("src.classification.trainer.train", fake_train)
+    monkeypatch.setattr("src.classification.utils.select_device", lambda _d: "cpu")
+    monkeypatch.setattr("src.classification.utils.ag_device_map", lambda _d: "cpu")
+    train_cli.run(args)
+
+    assert captured["seed"] == 123

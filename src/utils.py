@@ -95,7 +95,7 @@ def save_image_rgba(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Convert numpy to PIL Image
-    img_pil = Image.fromarray(image, mode='RGBA')
+    img_pil = Image.fromarray(image)
     
     # Save with compression
     img_pil.save(

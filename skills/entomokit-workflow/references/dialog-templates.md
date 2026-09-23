@@ -58,10 +58,10 @@ Use these templates for every step. Keep wording short and consistent.
 
 参数卡：
 （以下仅为示例；实际展示时必须给出 clean 的完整可调参数）
-- --recursive
-  - 含义：是否扫描子目录
-  - 可选：true | false
-  - 当前：<true/false>
+- --pad-color
+  - 含义：非正方形图像填充为正方形
+  - 可选：none | median | black | white
+  - 当前：<value>
 - --out-short-size
   - 含义：输出短边像素
   - 可选：-1 或 >=224

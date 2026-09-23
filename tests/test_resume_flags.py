@@ -62,7 +62,7 @@ def _synthesize_args(**kw):
         rotate=True, out_image_format="png",
         annotation_output_format="none", coco_output_mode="single",
         threads=1, verbose=False, resume=False, overwrite=False,
-        coco_bbox_format="xywh", rotate_degrees=0.0,
+        coco_bbox_format="xywh", rotate_degrees=0.0, seed=42,
     )
     d.update(kw)
     return argparse.Namespace(**d)
@@ -106,7 +106,7 @@ def _clean_args(**kw):
         input_dir="/nonexistent", out_dir="/tmp/clean_out",
         out_short_size=None, out_image_format="jpg", threads=4,
         keep_exif=False, dedup_mode="phash", phash_threshold=5,
-        recursive=False, verbose=False, resume=False, overwrite=False,
+        pad_color="none", verbose=False, resume=False, overwrite=False,
     )
     d.update(kw)
     return argparse.Namespace(**d)
@@ -253,6 +253,7 @@ def _train_args(**kw):
         batch_size=32,
         num_workers=4,
         num_threads=0,
+        seed=0,
     )
     d.update(kw)
     return argparse.Namespace(**d)

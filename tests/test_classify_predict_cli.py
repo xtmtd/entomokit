@@ -189,3 +189,21 @@ def test_predict_run_onnx_enables_progress_by_default(
     predict_cli.run(args)
 
     assert captured["show_progress"] is True
+
+
+def test_resolve_predict_inputs_discovers_nested_images_with_relative_names(
+    tmp_path: Path,
+) -> None:
+    from entomokit.classify import predict as predict_cli
+
+    images_dir = tmp_path / "images"
+    (images_dir / "beetles").mkdir(parents=True)
+    (images_dir / "beetles" / "a.jpg").write_bytes(b"fake")
+    (images_dir / "b.jpg").write_bytes(b"fake")
+
+    df, resolved = predict_cli._resolve_predict_inputs(
+        input_csv=None, images_dir=images_dir
+    )
+
+    assert df["image"].tolist() == ["b.jpg", "beetles/a.jpg"]
+    assert resolved == images_dir

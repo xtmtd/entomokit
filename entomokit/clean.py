@@ -61,14 +61,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Maximum pHash distance for treating two images as duplicates.",
     )
     p.add_argument(
-        "--recursive",
-        action="store_true",
-        help="Recursively scan subdirectories in --input-dir. Output mirrors the subdirectory structure by default; use --flatten to collect all images into a single directory.",
-    )
-    p.add_argument(
-        "--flatten",
-        action="store_true",
-        help="When used with --recursive, collect all output images into a single flat directory instead of mirroring the input subdirectory structure.",
+        "--pad-color",
+        default="none",
+        choices=["none", "median", "black", "white"],
+        help="Pad non-square images to a square using this fill color (none keeps the resized dimensions).",
     )
     p.add_argument(
         "--verbose",
@@ -112,8 +108,6 @@ def run(args: argparse.Namespace) -> None:
     images_subdir.mkdir(parents=True, exist_ok=True)
     save_log(out_dir, args)
 
-    flatten = getattr(args, "flatten", False)
-
     cleaner = ImageCleaner(
         input_dir=str(input_dir),
         output_dir=str(images_subdir),
@@ -123,14 +117,11 @@ def run(args: argparse.Namespace) -> None:
         phash_threshold=args.phash_threshold,
         threads=args.threads,
         keep_exif=args.keep_exif,
+        pad_color=args.pad_color,
     )
 
     log_path = str(out_dir / "log.txt")
-    results = cleaner.process_directory(
-        log_path=log_path,
-        recursive=args.recursive,
-        flatten=flatten,
-    )
+    results = cleaner.process_directory(log_path=log_path)
 
     total = results["processed"] + results.get("skipped", 0)
     print(f"Done. Processed {total} images, {results['errors']} errors.")

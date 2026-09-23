@@ -127,3 +127,43 @@ def test_reset_shutdown_flag_clears_state():
     cli._shutdown_requested = True
     cli.reset_shutdown_flag()
     assert cli._shutdown_requested is False
+
+
+def test_save_log_header_has_version_and_commit_probed_once(tmp_path) -> None:
+    from src.common import cli
+
+    calls = []
+
+    def _fake_probe() -> str:
+        calls.append(1)
+        return "abc1234"
+
+    cli._resolved_commit = None
+    original = cli._probe_git_commit
+    cli._probe_git_commit = _fake_probe
+    try:
+        cli.save_log(tmp_path, argparse.Namespace(example=1))
+        cli.save_log(tmp_path, argparse.Namespace(example=2))
+        cli._disable_output_capture()
+    finally:
+        cli._probe_git_commit = original
+        cli._disable_output_capture()
+
+    content = (tmp_path / "log.txt").read_text(encoding="utf-8")
+    assert "EntomoKit version: " in content
+    assert "Commit: abc1234" in content
+    assert content.index("EntomoKit version:") < content.index("Arguments:")
+    assert len(calls) == 1
+
+
+def test_cam_help_exposes_num_threads_not_num_workers() -> None:
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "entomokit.main", "classify", "cam", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert "--num-threads" in result.stdout
+    assert "--num-workers" not in result.stdout

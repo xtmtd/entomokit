@@ -12,9 +12,11 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 
+from src.common.files import IMAGE_EXTENSIONS, iter_files
+
 # Image suffixes both embedders load; the CLI reuses this to pre-validate
 # --label-csv against --images-dir.
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+IMAGE_EXTS = set(IMAGE_EXTENSIONS)
 
 
 class _ImageDataset(Dataset):
@@ -48,13 +50,7 @@ def extract_embeddings_timm(
     data_config = resolve_model_data_config(model)
     transform = create_transform(**data_config, is_training=False)
 
-    paths = sorted(
-        [
-            p
-            for p in images_dir.iterdir()
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
-        ]
-    )
+    paths = iter_files(images_dir, IMAGE_EXTS)
 
     dataset = _ImageDataset(paths, transform)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
@@ -70,7 +66,11 @@ def extract_embeddings_timm(
     df = pd.DataFrame(
         embeddings, columns=[f"feat_{i}" for i in range(embeddings.shape[1])]
     )
-    df.insert(0, "image", [Path(p).name for p in all_paths])
+    df.insert(
+        0,
+        "image",
+        [Path(p).relative_to(images_dir).as_posix() for p in all_paths],
+    )
     return df
 
 
@@ -82,13 +82,7 @@ def extract_embeddings_ag(
     device: torch.device,
 ) -> pd.DataFrame:
     """Extract embeddings using a fine-tuned AutoGluon model."""
-    paths = sorted(
-        [
-            p
-            for p in images_dir.iterdir()
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
-        ]
-    )
+    paths = iter_files(images_dir, IMAGE_EXTS)
     df_in = pd.DataFrame({"image": [str(p) for p in paths]})
 
     with warnings.catch_warnings():
@@ -110,7 +104,9 @@ def extract_embeddings_ag(
     embed_df = pd.DataFrame(
         embeddings, columns=[f"feat_{i}" for i in range(embeddings.shape[1])]
     )
-    embed_df.insert(0, "image", [p.name for p in paths])
+    embed_df.insert(
+        0, "image", [p.relative_to(images_dir).as_posix() for p in paths]
+    )
     return embed_df
 
 

@@ -89,6 +89,7 @@ def train(
     batch_size: int,
     num_workers: int,
     num_threads: int,
+    seed: int = 0,
 ) -> Path:
     """Train an AutoGluon MultiModalPredictor for image classification.
 
@@ -157,6 +158,7 @@ def train(
         "train_data": df,
         "hyperparameters": hyperparameters,
         "time_limit": int(time_limit_hours * 3600),
+        "seed": seed,
     }
     try:
         predictor.fit(**fit_kwargs)

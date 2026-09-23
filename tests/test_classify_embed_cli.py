@@ -228,3 +228,92 @@ def test_classify_embed_prints_na_for_unavailable_metrics(
     assert "Linear_Probing_Balanced_Acc: N/A" in out_text
     written = pd.read_csv(out_dir / "metrics.csv")
     assert pd.isna(written.loc[0, "Linear_Probing_Balanced_Acc"])
+
+
+def test_extract_embeddings_timm_uses_relative_image_names(tmp_path, monkeypatch) -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("timm")
+
+    import timm
+
+    from src.classification import embedder
+
+    images_dir = tmp_path / "images"
+    (images_dir / "beetles").mkdir(parents=True)
+    from PIL import Image as _PIL
+
+    _PIL.new("RGB", (8, 8)).save(images_dir / "beetles" / "a.jpg")
+    _PIL.new("RGB", (8, 8)).save(images_dir / "top.jpg")
+
+    class _FakeModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self._p = torch.nn.Parameter(torch.zeros(1))
+
+        def forward(self, x):
+            return torch.zeros(x.shape[0], 3)
+
+    monkeypatch.setattr(timm, "create_model", lambda *_a, **_k: _FakeModel())
+    monkeypatch.setattr(
+        timm.data, "resolve_model_data_config", lambda *_a, **_k: {}
+    )
+    monkeypatch.setattr(
+        timm.data.transforms_factory,
+        "create_transform",
+        lambda *_a, **_k: (lambda _img: torch.zeros(3, 8, 8)),
+    )
+
+    df = embedder.extract_embeddings_timm(
+        images_dir=images_dir,
+        base_model="fake",
+        batch_size=2,
+        num_workers=0,
+        device=torch.device("cpu"),
+    )
+
+    assert sorted(df["image"].tolist()) == ["beetles/a.jpg", "top.jpg"]
+
+
+def test_classify_embed_rejects_basename_for_nested_image(tmp_path, monkeypatch):
+    from entomokit.classify import embed as embed_cli
+
+    out_dir = tmp_path / "embed_out"
+    images_dir = tmp_path / "images"
+    (images_dir / "beetles").mkdir(parents=True)
+    (images_dir / "beetles" / "a.jpg").write_bytes(b"")
+    label_csv = tmp_path / "labels.csv"
+    pd.DataFrame({"image": ["a.jpg"], "label": ["x"]}).to_csv(label_csv, index=False)
+    extracted: list = []
+    _stub_runtime(monkeypatch, extracted=extracted)
+
+    args = _embed_args(
+        tmp_path, out_dir, images_dir=str(images_dir), label_csv=str(label_csv)
+    )
+
+    with pytest.raises(ValueError, match="matching"):
+        embed_cli.run(args)
+    assert extracted == []
+
+
+def test_classify_embed_errors_when_merge_matches_no_rows(tmp_path, monkeypatch):
+    from entomokit.classify import embed as embed_cli
+
+    out_dir = tmp_path / "embed_out"
+    images_dir = tmp_path / "images"
+    (images_dir / "beetles").mkdir(parents=True)
+    (images_dir / "beetles" / "a.jpg").write_bytes(b"")
+    label_csv = tmp_path / "labels.csv"
+    pd.DataFrame({"image": ["beetles/a.jpg"], "label": ["x"]}).to_csv(
+        label_csv, index=False
+    )
+    # The stub returns top-level "a.jpg"/"b.jpg" embeddings, which pass the
+    # pre-check but cannot merge with the nested label path.
+    _stub_runtime(monkeypatch)
+
+    args = _embed_args(
+        tmp_path, out_dir, images_dir=str(images_dir), label_csv=str(label_csv)
+    )
+
+    with pytest.raises(ValueError, match="match no embeddings"):
+        embed_cli.run(args)
+    assert (out_dir / "embeddings.csv").exists()

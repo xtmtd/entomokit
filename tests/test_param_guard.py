@@ -38,7 +38,7 @@ def test_render_parameter_card_shows_validation_status() -> None:
             "--input-dir": "./raw",
             "--out-dir": "./out",
             "--out-image-format": "jpg",
-            "--recursive": "true",
+            "--pad-color": "median",
         },
     )
 

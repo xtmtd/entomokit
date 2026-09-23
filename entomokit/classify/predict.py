@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
+from src.common.files import IMAGE_EXTENSIONS, iter_files
 
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+IMAGE_EXTS = set(IMAGE_EXTENSIONS)
 
 
 class PredictInputError(ValueError):
@@ -78,9 +78,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _has_image_files(images_dir: Path) -> bool:
-    return any(
-        p.is_file() and p.suffix.lower() in IMAGE_EXTS for p in images_dir.iterdir()
-    )
+    return bool(iter_files(images_dir, IMAGE_EXTS))
 
 
 def _resolve_predict_inputs(
@@ -129,9 +127,8 @@ def _resolve_predict_inputs(
         raise ValueError("At least one of --input-csv or --images-dir is required.")
 
     imgs = [
-        p.name
-        for p in images_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+        p.relative_to(images_dir).as_posix()
+        for p in iter_files(images_dir, IMAGE_EXTS)
     ]
     return pd.DataFrame({"image": sorted(imgs)}), images_dir
 

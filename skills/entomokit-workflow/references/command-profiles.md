@@ -22,7 +22,8 @@
 
 - Required in guided mode.
 - Typical defaults: `--out-short-size 512`, `--out-image-format jpg`, `--dedup-mode md5`.
-- If input has nested class folders, recommend `--recursive` and wait for user confirmation.
+- `clean` always scans `--input-dir` recursively and mirrors each input's relative path under `cleaned_images/`; there is no `--recursive` or flatten flag to ask about. Nested class folders are handled automatically, and same-named files in different subdirectories never overwrite each other.
+- `--pad-color` defaults to `none` (non-square images keep their resized dimensions). Choose `median` to square images while blending with the border color, `black`/`white` for a fixed fill, or leave `none` when downstream steps accept non-square inputs.
 - Non-empty `--out-dir` requires explicit `--resume` (continue) or `--overwrite` (fresh start); default exits with an error.
 
 ## segment
@@ -33,13 +34,15 @@
 - For faster RGB crop output without alpha mask, recommend `otsu-bbox` or `grabcut-bbox`.
 - `--threads` controls concurrent image workers for Otsu/GrabCut methods (default: 8). SAM3/SAM3-bbox use a single stateful predictor and remain serial on all devices (CPU, CUDA, MPS). For CPU methods, recommend starting near half the logical CPU count to avoid OpenCV oversubscription, then benchmarking.
 - If user requests unsupported methods, mark unsupported and recommend nearest supported method.
-- Non-empty `--out-dir` requires `--resume` (skip already-segmented images) or `--overwrite`; default exits with an error.
+- `segment` scans `--input-dir` recursively and flattens every image into `images/` (annotations go to per-format directories); each input-relative path becomes a unique flat sample ID, so nested same-named images produce distinct samples. Standard layouts (for example Pascal VOC `JPEGImages/`) are produced by a later conversion/split step, not by `segment`.
+- Non-empty `--out-dir` requires `--resume` or `--overwrite`; default exits with an error. `--resume` auto-skips only inputs whose exact single-mask output already exists; multi-mask inputs are always re-processed (no mask count is recorded, so a partial set must not be treated as done). On resume the unified `annotations.coco.json` is merged with the previous file so skipped samples keep their annotations.
 
 ## measure
 
 - Use for morphology metrics from segmentation masks.
 - Required params: `--mask-dir`, `--out-dir`.
 - Optional scale: `--pixel-size-um` with unit `um/px` (micrometers per pixel).
+- Masks are discovered recursively; `metrics.csv` records each mask as a path relative to `--mask-dir` (for example `beetles/a.png`), and `--resume` keys on that relative path.
 - Explicitly remind users that `body_length`/`body_width` are mask-geometry estimates and may be biased by appendages, border clipping, or merged/fragmented masks.
 - After run, always summarize:
   - `metrics.csv` (per-image metrics + warn reasons),
@@ -67,6 +70,7 @@
   - wait for explicit user choice,
   - do not silently choose CPU.
 - Suggest `--focal-loss` for imbalanced classes.
+- `--seed` defaults to `0` and is passed to AutoMM for reproducible training; mention it when the user wants repeatable runs.
 - After train completes, do not auto-run evaluate. First show key train results and ask user whether to proceed to `predict` or `evaluate`.
 - Non-empty `--out-dir` requires `--resume` (continue checkpoint training) or `--overwrite` (fresh training); default exits with an error.
 
@@ -78,6 +82,16 @@
 - CAM: generate GradCAM heatmaps for model interpretability. `--label-csv` is optional; when omitted, recursively process supported images under `--images-dir`. `--eval-transform` supports `center-crop` (default, preserve the model validation field of view) and `whole-specimen-pad` (preserve the full specimen). AutoGluon `--model-dir` explains the final classification head. ConvNeXt uses the final stage block, while ViT/Swin use transformer-compatible target layers. `--num-workers` is not supported because CAM processing is per-image; `--cam-batch-size` only affects CAM methods that batch internal work. `--save-npy` takes a required value: `none` (default), `raw` (unnormalized positive CAM, magnitude preserved), or `normalized` (per-image min-max `[0, 1]`). Raw magnitudes are comparable only within one model, target layer, and preprocessing setting, and `eigencam` raw values must not be used for response-magnitude statistics.
 - Export ONNX: generate `model.onnx` and `label_classes.json`.
 - All five subcommands accept `--overwrite` to delete `--out-dir` contents and start fresh; non-empty `--out-dir` without `--overwrite` exits with an error.
+
+## synthesize
+
+- Required params: `--target-dir` (RGBA targets), `--background-dir`, `--out-dir`.
+- `--target-dir` images MUST be RGBA cutouts. Use mask-mode segmentation output (`segment` without `-bbox`, e.g. `--segmentation-method sam3|otsu|grabcut`) or another RGBA source. Do NOT point it at raw photos, `sam3-bbox`/`otsu-bbox`/`grabcut-bbox` crop output, or repaired images: those are RGB and every target will be rejected. If all targets fail, the error lists the observed modes (for example `18 RGB`).
+- `--num-syntheses` defaults to `1`. A positive integer means that many syntheses per target; a fraction between 0 and 1 means that share of targets is sampled, with one synthesis per selected target. For a fixed `--seed`, the fractional target subset is deterministic.
+- Backgrounds are sampled independently with replacement per synthesis task, so the number of syntheses per target is not capped by the background count.
+- `--seed` defaults to `42` and drives target sampling plus task-local synthesis randomness.
+- Target and background directories are scanned recursively, and outputs mirror each target's relative path under `images/`; annotations reference the same mapped path. Output files are named `{target_stem}_{NN}`; targets in the same directory that share a stem (different extensions) get a short path-digest suffix, and `--resume` uses those resolved names. On resume the unified `annotations.coco.json` is merged with the previous file so skipped targets keep their annotations.
+- Non-empty `--out-dir` requires `--resume` or `--overwrite`; default exits with an error.
 
 ## Retry and Rerun
 

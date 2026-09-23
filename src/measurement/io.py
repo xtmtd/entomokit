@@ -6,17 +6,14 @@ import numpy as np
 from skimage import io
 from skimage.measure import label
 
+from src.common.files import IMAGE_EXTENSIONS, iter_files
 
-VALID_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+
+VALID_IMAGE_EXTENSIONS = set(IMAGE_EXTENSIONS)
 
 
 def iter_mask_files(mask_dir: Path) -> list[Path]:
-    files = [
-        p
-        for p in sorted(mask_dir.iterdir())
-        if p.is_file() and p.suffix.lower() in VALID_IMAGE_EXTENSIONS
-    ]
-    return files
+    return iter_files(mask_dir, IMAGE_EXTENSIONS)
 
 
 def load_binary_mask(path: Path) -> np.ndarray:

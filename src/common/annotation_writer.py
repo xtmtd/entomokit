@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 SUPPORTED_FORMATS = {"coco", "yolo", "voc"}
 
@@ -90,6 +90,9 @@ def _save_coco(
     )
     if coco_bbox_format == "xyxy":
         _rewrite_coco_bbox_to_xyxy(anno_path)
+    # Record the convention so a later --resume can reject a format switch
+    # instead of silently merging xywh and xyxy bboxes.
+    record_coco_bbox_format(anno_path, coco_bbox_format)
 
 
 def _save_yolo(
@@ -142,6 +145,168 @@ def _write_voc_imagesets(out_dir: Path, stems: List[str]) -> None:
     (imagesets_dir / "default.txt").write_text(
         "\n".join(stems) + "\n", encoding="utf-8"
     )
+
+
+def load_coco_json(path) -> Optional[dict]:
+    """Read a COCO JSON file, returning None when missing or unreadable."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def record_coco_bbox_format(path, bbox_format: str) -> None:
+    """Stamp the bbox convention used by a COCO file into its ``info`` block.
+
+    ``--resume`` merges a prior COCO file with this run's output; without a
+    recorded convention a later run with a different ``--coco-bbox-format``
+    would silently mix xywh and xyxy bboxes.
+    """
+    data = load_coco_json(path)
+    if data is None:
+        return
+    info = data.get("info")
+    if not isinstance(info, dict):
+        info = {}
+    info["bbox_format"] = bbox_format
+    data["info"] = info
+    Path(path).write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def coco_bbox_format_of(path_or_payload) -> str:
+    """Return the bbox convention recorded in a COCO file/payload.
+
+    Files written before the convention was recorded (or produced by other
+    writers) default to ``xywh``, matching the historical default.
+    """
+    if isinstance(path_or_payload, dict):
+        data = path_or_payload
+    else:
+        data = load_coco_json(path_or_payload)
+    if not isinstance(data, dict):
+        return "xywh"
+    info = data.get("info")
+    if isinstance(info, dict) and info.get("bbox_format"):
+        return str(info["bbox_format"])
+    return "xywh"
+
+
+def drop_coco_images(payload: dict, file_names: set) -> dict:
+    """Return a COCO payload without the images whose ``file_name`` is listed.
+
+    Used on ``--resume`` when a re-processed sample now yields no masks: its
+    previous image and annotations must not survive the merge.
+    """
+    images = payload.get("images") or []
+    dropped_ids = {
+        image.get("id") for image in images if image.get("file_name") in file_names
+    }
+    result = dict(payload)
+    result["images"] = [
+        image for image in images if image.get("id") not in dropped_ids
+    ]
+    result["annotations"] = [
+        annotation
+        for annotation in (payload.get("annotations") or [])
+        if annotation.get("image_id") not in dropped_ids
+    ]
+    return result
+
+
+def merge_coco_json(prior: dict, target_path) -> None:
+    """Merge prior COCO content into a freshly written unified COCO file.
+
+    Used by ``--resume``: samples skipped this run keep their annotations, and a
+    re-processed sample replaces its previous entry instead of duplicating it
+    (entries are matched by ``file_name``). No-op when there is no prior data.
+    """
+    if not prior:
+        return
+    target_path = Path(target_path)
+    current = load_coco_json(target_path)
+    if current is None:
+        return
+    merged = _merge_coco_payloads(prior, current)
+    target_path.write_text(
+        json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _merge_coco_payloads(existing: dict, new: dict) -> dict:
+    """Union two COCO payloads; ``new`` wins on a ``file_name`` clash."""
+    categories = list(existing.get("categories") or [])
+    name_to_id = {
+        category.get("name"): category.get("id")
+        for category in categories
+        if category.get("name") is not None and category.get("id") is not None
+    }
+    next_category_id = max((c.get("id", 0) for c in categories), default=0)
+    new_category_ids: Dict = {}
+    for category in new.get("categories") or []:
+        name = category.get("name")
+        if name in name_to_id:
+            new_category_ids[category.get("id")] = name_to_id[name]
+        else:
+            next_category_id += 1
+            merged_category = dict(category)
+            merged_category["id"] = next_category_id
+            categories.append(merged_category)
+            if name is not None:
+                name_to_id[name] = next_category_id
+            new_category_ids[category.get("id")] = next_category_id
+
+    images = list(existing.get("images") or [])
+    image_by_name = {image.get("file_name"): image for image in images}
+    next_image_id = max((image.get("id", 0) for image in images), default=0)
+    replaced_image_ids = set()
+    new_image_ids: Dict = {}
+    for image in new.get("images") or []:
+        file_name = image.get("file_name")
+        if file_name in image_by_name:
+            kept = image_by_name[file_name]
+            replaced_image_ids.add(kept.get("id"))
+            kept.update({k: v for k, v in image.items() if k != "id"})
+            new_image_ids[image.get("id")] = kept.get("id")
+        else:
+            next_image_id += 1
+            merged_image = dict(image)
+            merged_image["id"] = next_image_id
+            images.append(merged_image)
+            image_by_name[file_name] = merged_image
+            new_image_ids[image.get("id")] = next_image_id
+
+    annotations = [
+        annotation
+        for annotation in (existing.get("annotations") or [])
+        if annotation.get("image_id") not in replaced_image_ids
+    ]
+    next_annotation_id = max(
+        (annotation.get("id", 0) for annotation in annotations), default=0
+    )
+    for annotation in new.get("annotations") or []:
+        merged_annotation = dict(annotation)
+        next_annotation_id += 1
+        merged_annotation["id"] = next_annotation_id
+        merged_annotation["image_id"] = new_image_ids.get(
+            annotation.get("image_id"), annotation.get("image_id")
+        )
+        if merged_annotation.get("category_id") in new_category_ids:
+            merged_annotation["category_id"] = new_category_ids[
+                merged_annotation["category_id"]
+            ]
+        annotations.append(merged_annotation)
+
+    merged = dict(new)
+    merged["images"] = images
+    merged["annotations"] = annotations
+    merged["categories"] = categories
+    return merged
 
 
 def _rewrite_coco_bbox_to_xyxy(json_path: Path) -> None:

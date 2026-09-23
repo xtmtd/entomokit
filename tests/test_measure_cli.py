@@ -92,3 +92,24 @@ def test_measure_prints_length_width_caution(tmp_path, caplog) -> None:
     main(["measure", "--mask-dir", str(mask_dir), "--out-dir", str(out_dir)])
 
     assert "body_length/body_width are estimates" in caplog.text
+
+
+def test_nested_masks_keep_unique_relative_identifiers(tmp_path) -> None:
+    import numpy as np
+    import cv2
+
+    from entomokit.main import main
+
+    mask_dir = tmp_path / "masks"
+    for sub in ("a", "b"):
+        (mask_dir / sub).mkdir(parents=True)
+        m = np.zeros((40, 40), dtype=np.uint8)
+        m[10:30, 10:30] = 255
+        cv2.imwrite(str(mask_dir / sub / "same.png"), m)
+
+    out_dir = tmp_path / "out"
+    main(["measure", "--mask-dir", str(mask_dir), "--out-dir", str(out_dir)])
+
+    with (out_dir / "metrics.csv").open("r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert sorted(r["file_name"] for r in rows) == ["a/same.png", "b/same.png"]

@@ -131,6 +131,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--num-threads", type=int, default=0, help="CPU threads for PyTorch (0 = auto)."
     )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed passed to AutoMM for reproducible training.",
+    )
     p.set_defaults(func=run)
 
 
@@ -181,6 +187,7 @@ def run(args: argparse.Namespace) -> None:
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         num_threads=args.num_threads,
+        seed=args.seed,
     )
 
     print(f"Model saved to: {model_dir}")

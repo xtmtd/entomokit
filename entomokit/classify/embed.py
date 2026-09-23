@@ -144,6 +144,7 @@ def run(args: argparse.Namespace) -> None:
     label_df = None
     if args.label_csv:
         from src.classification.embedder import IMAGE_EXTS
+        from src.common.files import iter_files
 
         images_dir = Path(args.images_dir)
         if not images_dir.is_dir():
@@ -157,15 +158,16 @@ def run(args: argparse.Namespace) -> None:
                 f"{', '.join(map(str, duplicated[:5]))}"
             )
 
-        present = {
-            p.name
-            for p in images_dir.iterdir()
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS
-        }
+        present: set[str] = set()
+        for p in iter_files(images_dir, IMAGE_EXTS):
+            # The embeddings/merge contract uses input-relative POSIX paths, so a
+            # bare basename must not pass the pre-check for a nested image.
+            present.add(p.relative_to(images_dir).as_posix())
         if not (set(label_df["image"].astype(str)) & present):
             raise ValueError(
                 f"--label-csv has no 'image' values matching the image file names "
-                f"in {images_dir}"
+                f"in {images_dir}; use paths relative to --images-dir (for "
+                "example 'beetles/a.jpg')."
             )
 
     out_dir = Path(args.out_dir)
@@ -205,6 +207,17 @@ def run(args: argparse.Namespace) -> None:
     # Supervised metrics + UMAP
     if args.label_csv:
         merged = embed_df.merge(label_df[["image", "label"]], on="image", how="inner")
+        if merged.empty:
+            raise ValueError(
+                "--label-csv 'image' values match no embeddings; use paths "
+                "relative to --images-dir (for example 'beetles/a.jpg')."
+            )
+        unmatched = len(label_df) - len(merged)
+        if unmatched:
+            print(
+                f"Warning: {unmatched} label row(s) had no matching image.",
+                file=sys.stderr,
+            )
         feat_cols = [c for c in merged.columns if c.startswith("feat_")]
         embeddings = merged[feat_cols].values
         labels = merged["label"].values

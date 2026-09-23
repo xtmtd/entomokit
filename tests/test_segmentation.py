@@ -474,7 +474,7 @@ def image_dir(tmp_path):
     return d
 
 
-def _make_processor(method="otsu", annotation_format="coco"):
+def _make_processor(method="otsu", annotation_format="coco", coco_bbox_format="xywh"):
     mock_wrapper = MagicMock()
     with (
         patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
@@ -487,6 +487,7 @@ def _make_processor(method="otsu", annotation_format="coco"):
             device="cpu",
             segmentation_method=method,
             annotation_format=annotation_format,
+            coco_bbox_format=coco_bbox_format,
         )
 
 
@@ -512,9 +513,9 @@ def test_cpu_methods_use_image_workers(monkeypatch, image_dir, tmp_path, method)
         "src.segmentation.processor.ThreadPoolExecutor", _RecordingExecutor
     )
     processor = _make_processor(method)
-    processor.process_directory(image_dir, tmp_path, num_workers=2)
-
     expected = sorted(image_dir.glob("*.png"))
+    processor.process_directory(image_dir, tmp_path / "out", num_workers=2)
+
     assert submitted == expected
 
 
@@ -579,3 +580,390 @@ def test_segment_cli_rejects_nonpositive_threads(value):
         parser.parse_args(
             ["segment", "--input-dir", "in", "--out-dir", "out", "--threads", value]
         )
+
+
+# ─── recursive scanning / sample-ID encoding ────────────────────────────
+
+
+def test_nested_duplicate_basenames_get_unique_sample_ids_and_resume(tmp_path):
+    input_dir = tmp_path / "input"
+    for sub in ("beetles", "moths"):
+        d = input_dir / sub
+        d.mkdir(parents=True)
+        img = np.full((240, 320, 3), 40, dtype=np.uint8)
+        img[80:180, 120:220] = 20
+        from PIL import Image as _PIL
+
+        _PIL.fromarray(img).save(d / "a.jpg")
+
+    out = tmp_path / "out"
+    first = _make_processor("otsu")
+    result = first.process_directory(input_dir, out, num_workers=1)
+    assert result["processed"] == 2
+
+    names = sorted(p.name for p in (out / "images").glob("*.png"))
+    assert len(names) == 2
+    assert names[0] != names[1]
+
+    # Resume must recognise both nested samples, not skip the second "a".
+    second = _make_processor("otsu")
+    resumed = second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+    assert resumed["skipped"] == 2
+    assert resumed["processed"] == 0
+
+
+def test_process_directory_records_images_with_no_masks(tmp_path, monkeypatch):
+    from src.segmentation.processor import ImageComputation
+
+    input_dir = tmp_path / "in"
+    for sub in ("a", "b"):
+        (input_dir / sub).mkdir(parents=True)
+        (input_dir / sub / "x.png").write_bytes(b"")
+
+    processor = _make_processor("otsu")
+
+    def _empty(path):
+        return ImageComputation(
+            image_path=path, image=np.zeros((10, 10, 3), np.uint8), masks=[], scores=[]
+        )
+
+    monkeypatch.setattr(processor, "_compute_image", _empty)
+    out = tmp_path / "out"
+    processor.process_directory(input_dir, out, num_workers=1)
+
+    listed = (out / "no_mask_images.txt").read_text(encoding="utf-8").split()
+    assert listed == sorted(
+        [str(input_dir / "a" / "x.png"), str(input_dir / "b" / "x.png")]
+    )
+
+
+def test_resume_only_skips_exact_single_mask_artifact(tmp_path, monkeypatch):
+    from src.segmentation.processor import ImageComputation, sample_id_for
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+    images_dir = out / "images"
+    images_dir.mkdir(parents=True)
+    sid = sample_id_for("x.png")
+
+    calls = []
+
+    def _empty(path):
+        calls.append(path)
+        return ImageComputation(
+            image_path=path, image=np.zeros((10, 10, 3), np.uint8), masks=[], scores=[]
+        )
+
+    def _run():
+        calls.clear()
+        processor = _make_processor("otsu")
+        monkeypatch.setattr(processor, "_compute_image", _empty)
+        return processor.process_directory(
+            input_dir, out, num_workers=1, skip_existing=True
+        )
+
+    # Prefix-sharing files are never treated as completion.
+    (images_dir / f"{sid}_backup.png").write_bytes(b"")
+    assert _run().get("skipped", 0) == 0
+    assert len(calls) == 1
+
+    (images_dir / f"{sid}_2021.png").write_bytes(b"")
+    assert _run().get("skipped", 0) == 0
+    assert len(calls) == 1
+
+    # A partial multi-mask set must be re-processed ...
+    (images_dir / f"{sid}_01.png").write_bytes(b"")
+    assert _run().get("skipped", 0) == 0
+    assert len(calls) == 1
+
+    # ... and so is a complete-looking one, since no mask count is recorded.
+    (images_dir / f"{sid}_02.png").write_bytes(b"")
+    assert _run().get("skipped", 0) == 0
+    assert len(calls) == 1
+
+    # Only the exact single-mask artifact auto-skips.
+    for stale in list(images_dir.iterdir()):
+        stale.unlink()
+    (images_dir / f"{sid}.png").write_bytes(b"")
+    assert _run()["skipped"] == 1
+    assert calls == []
+
+
+
+def test_resume_does_not_treat_unrelated_prefixed_files_as_completion(tmp_path, monkeypatch):
+    from src.segmentation.processor import ImageComputation, sample_id_for
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+    images_dir = out / "images"
+    images_dir.mkdir(parents=True)
+    sid = sample_id_for("x.png")
+
+    calls = []
+
+    def _empty(path):
+        calls.append(path)
+        return ImageComputation(
+            image_path=path, image=np.zeros((10, 10, 3), np.uint8), masks=[], scores=[]
+        )
+
+    processor = _make_processor("otsu")
+    monkeypatch.setattr(processor, "_compute_image", _empty)
+
+    for suffix in ("_backup", "_2021", "_1", "_100"):
+        for stale in list(images_dir.iterdir()):
+            stale.unlink()
+        (images_dir / f"{sid}{suffix}.png").write_bytes(b"")
+        calls.clear()
+        result = processor.process_directory(
+            input_dir, out, num_workers=1, skip_existing=True
+        )
+        assert result.get("skipped", 0) == 0, suffix
+        assert len(calls) == 1, suffix
+
+
+def test_resume_preserves_existing_unified_coco_annotations(image_dir, tmp_path):
+    import json
+
+    out = tmp_path / "out"
+    _make_processor("otsu").process_directory(image_dir, out, num_workers=1)
+    before = json.loads((out / "annotations.coco.json").read_text(encoding="utf-8"))
+    assert before["images"] and before["annotations"]
+
+    resumed = _make_processor("otsu").process_directory(
+        image_dir, out, num_workers=1, skip_existing=True
+    )
+    after = json.loads((out / "annotations.coco.json").read_text(encoding="utf-8"))
+
+    assert resumed["skipped"] == 3
+    assert after["images"] == before["images"]
+    assert after["annotations"] == before["annotations"]
+
+
+def test_resume_merges_new_segment_samples_into_existing_coco(tmp_path):
+    import json
+
+    from PIL import Image as _PIL
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    img = np.full((240, 320, 3), 40, dtype=np.uint8)
+    img[80:180, 120:220] = 20
+    _PIL.fromarray(img).save(input_dir / "a.png")
+
+    out = tmp_path / "out"
+    _make_processor("otsu").process_directory(input_dir, out, num_workers=1)
+    before = json.loads((out / "annotations.coco.json").read_text(encoding="utf-8"))
+
+    _PIL.fromarray(img).save(input_dir / "b.png")
+    resumed = _make_processor("otsu").process_directory(
+        input_dir, out, num_workers=1, skip_existing=True
+    )
+    after = json.loads((out / "annotations.coco.json").read_text(encoding="utf-8"))
+
+    assert resumed["skipped"] == 1
+    assert resumed["processed"] == 1
+    assert len(after["images"]) == len(before["images"]) + 1
+    assert {i["file_name"] for i in before["images"]} <= {
+        i["file_name"] for i in after["images"]
+    }
+
+
+def _mask_set(n: int, size: int = 200) -> list:
+    masks = []
+    for i in range(n):
+        mask = np.zeros((size, size), dtype=bool)
+        mask[20 + i * 20 : 60 + i * 20, 20:80] = True
+        masks.append(mask)
+    return masks
+
+
+def _stub_masks(processor, n: int):
+    from src.segmentation.processor import ImageComputation
+
+    image = np.full((200, 200, 3), 40, dtype=np.uint8)
+    processor._compute_image = lambda path: ImageComputation(
+        image_path=path, image=image, masks=_mask_set(n), scores=[1.0] * n
+    )
+
+
+def test_resume_multi_mask_rerun_removes_orphan_crops(tmp_path):
+    from src.segmentation.processor import sample_id_for
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+    sid = sample_id_for("x.png")
+
+    first = _make_processor("otsu")
+    _stub_masks(first, 3)
+    first.process_directory(input_dir, out, num_workers=1)
+    assert sorted(p.name for p in (out / "images").iterdir()) == [
+        f"{sid}_01.png",
+        f"{sid}_02.png",
+        f"{sid}_03.png",
+    ]
+
+    second = _make_processor("otsu")
+    _stub_masks(second, 2)
+    second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+
+    assert sorted(p.name for p in (out / "images").iterdir()) == [
+        f"{sid}_01.png",
+        f"{sid}_02.png",
+    ]
+
+
+def test_resume_rejects_coco_bbox_format_switch(tmp_path):
+    import json
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "a.png").write_bytes(b"")
+    out = tmp_path / "out"
+
+    first = _make_processor("otsu", coco_bbox_format="xywh")
+    _stub_masks(first, 1)
+    first.process_directory(input_dir, out, num_workers=1)
+    before = (out / "annotations.coco.json").read_text(encoding="utf-8")
+
+    (input_dir / "b.png").write_bytes(b"")
+    second = _make_processor("otsu", coco_bbox_format="xyxy")
+    _stub_masks(second, 1)
+    with pytest.raises(ValueError, match="coco-bbox-format"):
+        second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+
+    # Nothing was overwritten or mixed.
+    assert (out / "annotations.coco.json").read_text(encoding="utf-8") == before
+    payload = json.loads(before)
+    assert payload["info"]["bbox_format"] == "xywh"
+
+
+def test_resume_multi_mask_rerun_does_not_duplicate_voc_imageset(tmp_path):
+    from src.segmentation.processor import sample_id_for
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+    sid = sample_id_for("x.png")
+
+    first = _make_processor("otsu", annotation_format="voc")
+    _stub_masks(first, 3)
+    first.process_directory(input_dir, out, num_workers=1)
+
+    second = _make_processor("otsu", annotation_format="voc")
+    _stub_masks(second, 2)
+    second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+
+    lines = (
+        (out / "ImageSets" / "Main" / "default.txt")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert lines == [sid]
+
+
+def test_resume_zero_mask_rerun_clears_old_crops_and_coco(tmp_path):
+    import json
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+
+    first = _make_processor("otsu")
+    _stub_masks(first, 2)
+    first.process_directory(input_dir, out, num_workers=1)
+    before = json.loads((out / "annotations.coco.json").read_text(encoding="utf-8"))
+    assert before["annotations"]
+
+    second = _make_processor("otsu")
+    _stub_masks(second, 0)
+    second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+
+    assert list((out / "images").iterdir()) == []
+    after = json.loads((out / "annotations.coco.json").read_text(encoding="utf-8"))
+    assert after["images"] == []
+    assert after["annotations"] == []
+    assert (out / "no_mask_images.txt").read_text().strip().endswith("x.png")
+
+
+def test_resume_zero_mask_rerun_removes_voc_sample(tmp_path):
+    from src.segmentation.processor import sample_id_for
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+    sid = sample_id_for("x.png")
+
+    first = _make_processor("otsu", annotation_format="voc")
+    _stub_masks(first, 2)
+    first.process_directory(input_dir, out, num_workers=1)
+    assert (out / "Annotations" / f"{sid}.xml").exists()
+
+    second = _make_processor("otsu", annotation_format="voc")
+    _stub_masks(second, 0)
+    second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+
+    assert list((out / "images").iterdir()) == []
+    assert not (out / "Annotations" / f"{sid}.xml").exists()
+    assert (out / "ImageSets" / "Main" / "default.txt").read_text().split() == []
+
+
+def test_parallel_resume_skips_before_computing(tmp_path, monkeypatch):
+    from src.segmentation.processor import ImageComputation, sample_id_for
+
+    input_dir = tmp_path / "in"
+    for sub in ("a", "b"):
+        (input_dir / sub).mkdir(parents=True)
+        (input_dir / sub / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+    (out / "images").mkdir(parents=True)
+    (out / "images" / f"{sample_id_for('a/x.png')}.png").write_bytes(b"")
+
+    calls = []
+
+    def _record(path):
+        calls.append(path)
+        return ImageComputation(
+            image_path=path, image=np.zeros((10, 10, 3), np.uint8), masks=[], scores=[]
+        )
+
+    processor = _make_processor("otsu")
+    monkeypatch.setattr(processor, "_compute_image", _record)
+    result = processor.process_directory(input_dir, out, num_workers=2, skip_existing=True)
+
+    assert result["skipped"] == 1
+    assert [p.parent.name for p in calls] == ["b"]
+
+
+def test_no_mask_ledger_drops_reprocessed_source(tmp_path, monkeypatch):
+    from src.segmentation.processor import ImageComputation
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.png").write_bytes(b"")
+    out = tmp_path / "out"
+
+    def _empty(path):
+        return ImageComputation(
+            image_path=path, image=np.zeros((10, 10, 3), np.uint8), masks=[], scores=[]
+        )
+
+    first = _make_processor("otsu")
+    monkeypatch.setattr(first, "_compute_image", _empty)
+    first.process_directory(input_dir, out, num_workers=1)
+    assert (out / "no_mask_images.txt").is_file()
+
+    second = _make_processor("otsu")
+    _stub_masks(second, 1)
+    second.process_directory(input_dir, out, num_workers=1, skip_existing=True)
+
+    assert not (out / "no_mask_images.txt").exists()

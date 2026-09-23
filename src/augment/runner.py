@@ -16,6 +16,11 @@ def run_pipeline(
 ) -> dict:
     """Apply an albumentations Compose pipeline to an image."""
     if seed is not None:
+        # albumentations >=2 keeps its own RNG on the pipeline, so seeding the
+        # global random modules alone is not reproducible.
+        set_pipeline_seed = getattr(pipeline, "set_random_seed", None)
+        if set_pipeline_seed is not None:
+            set_pipeline_seed(seed)
         py_state = random.getstate()
         np_state = np.random.get_state()
         random.seed(seed)

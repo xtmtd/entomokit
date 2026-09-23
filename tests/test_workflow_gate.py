@@ -103,6 +103,8 @@ def test_run_guarded_step_rebuilds_entomokit_command_from_approved_params() -> N
             "md5",
             "--phash-threshold",
             "5",
+            "--pad-color",
+            "none",
         ]
     ]
 

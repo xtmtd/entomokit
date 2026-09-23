@@ -38,7 +38,7 @@ entomokit <command> [options]
 - **Flexible Repair Strategies**: OpenCV morphological operations, SAM3-based or LaMa hole filling
 - **Annotation Output**: COCO JSON, VOC Pascal XML, YOLO TXT
 - **Video Frame Extraction**: Multithreaded extraction with time range support
-- **Image Cleaning**: Resize, deduplicate (MD5/Phash), and standardize image naming; recursive mode
+- **Image Cleaning**: Resize, deduplicate (MD5/Phash), and standardize image naming; always recursive
 - **Image Augmentation**: Albumentations-based preset/custom augmentation with deterministic seeds
 - **Dataset Splitting**: Ratio or count-based train/val/test splits with stratification
 - **Image Synthesis**: Advanced compositing with rotation, color matching, and black region avoidance
@@ -282,6 +282,27 @@ Supported timm backbones include:
 
 ## Usage
 
+### Directory Input and Output Policy
+
+This policy applies to every directory-oriented command (`extract-frames`,
+`segment`, `measure`, `synthesize`, `clean`, `augment`) and to directory
+discovery in `classify embed`, `classify cam`, and `classify predict`:
+
+- Directory-oriented commands scan recursively by default; there is no
+  `--recursive` flag and no flatten option.
+- Ordinary file outputs mirror each input file's path relative to the input
+  root. For example, `clean --input-dir in --out-dir out` turns
+  `in/beetles/a.jpg` into `out/cleaned_images/beetles/a.jpg`, so two files with
+  the same basename in different subdirectories never overwrite each other.
+- `segment` is the deliberate exception: it does not mirror input paths. It
+  flattens every image into `images/` and encodes each input-relative path into
+  a unique flat sample ID (readable stem plus a short path digest, e.g.
+  `a__4cabcf2b3682`), with per-format annotation directories alongside.
+  Standard dataset layouts (for example Pascal VOC `JPEGImages/`) are produced
+  by a later conversion/split step, not directly by `segment`.
+- CSV-driven commands (`split-csv`, and classification commands given
+  `--input-csv`) remain CSV-driven and are outside this directory policy.
+
 Recommended workflow command order:
 
 1. `extract-frames`
@@ -367,7 +388,7 @@ entomokit segment \
 | `--annotation-format` | `coco`, `voc`, `yolo` | None |
 | `--coco-bbox-format` | `xywh`, `xyxy` | `xywh` |
 | `--threads` | Concurrent image workers for Otsu/GrabCut (default: 8); SAM3 remains serial | 8 |
-| `--resume` | Skip images already present in `--out-dir` (continue previous run) | No |
+| `--resume` | Skip inputs whose exact single-mask output already exists; multi-mask inputs are always re-processed | No |
 | `--overwrite` | Delete `--out-dir` contents and start fresh | No |
 
 **Output structure (COCO example):**
@@ -387,6 +408,26 @@ output_dir/
 ├── labels/                   # YOLO: .txt per image + data.yaml
 └── Annotations/              # VOC: .xml per image + ImageSets/Main/
 ```
+
+`segment` scans `--input-dir` recursively and writes every image to `images/`
+(annotations go to the per-format directories shown above); it does not mirror
+input paths. Each input-relative path is encoded into a unique,
+filesystem-safe sample ID (readable stem plus a short path digest, e.g.
+`a__4cabcf2b3682`), which is used for image files, VOC XML, YOLO TXT,
+SegmentationClass masks, COCO file names, and `ImageSets/Main/default.txt`.
+Two same-named images in different subdirectories therefore produce distinct
+samples, and `--resume` checks that exact mapped artifact instead of a
+basename glob. Only an exact single-mask output is trusted as completion:
+multi-mask inputs (`{sample_id}_01.png`, `_02`, ...) are always re-processed so
+a partially written set is never skipped. With `--resume`, the unified
+`annotations.coco.json` is merged with the previous file, so skipped samples
+keep their annotations. Standard dataset layouts (for
+example Pascal VOC `JPEGImages/`) are produced by a later conversion/split
+step, not by `segment`.
+
+Images for which the segmentation method returns no masks are logged with
+their full source path and listed in `out-dir/no_mask_images.txt` for later
+verification.
 
 ---
 
@@ -409,7 +450,7 @@ entomokit measure \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--mask-dir`, `-i` | Input mask directory | Required |
+| `--mask-dir`, `-i` | Input mask directory (scanned recursively) | Required |
 | `--out-dir`, `-o` | Output directory | Required |
 | `--pixel-size-um` | Pixel size in micrometers per pixel (`um/px`) | None |
 | `--verbose`, `-v` | Enable verbose logging | No |
@@ -423,6 +464,10 @@ output_dir/
 ├── metrics_summary.csv      # Aggregated statistics + warning counts
 └── metric_definitions.csv   # Metric definitions (zh/en + units/formulas)
 ```
+
+`file_name` in `metrics.csv` is the mask path relative to `--mask-dir` (for
+example `beetles/a.png`), which keeps nested same-named masks distinct and is
+the key used by `--resume`.
 
 **Caution on body length/width:**
 - `body_length_*` and `body_width_*` are geometry-based estimates from binary masks, not direct anatomical measurements.
@@ -467,6 +512,11 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 
 **Supported video formats**: mp4, mov, avi, mkv, webm, flv, m4v, mpeg, mpg, wmv, 3gp, ts
 
+Directory input is scanned recursively. Frames are written under
+`out-dir/<video's input-relative directory>/<video-stem>/`, so same-named
+videos in different subdirectories get separate frame trees; `--resume`
+checks the mapped frame directory.
+
 ---
 
 ### Clean Command
@@ -474,16 +524,16 @@ entomokit extract-frames --input-dir videos/ --out-dir frames/ \
 Clean and deduplicate images with consistent naming.
 
 ```bash
-# Basic (MD5 dedup)
+# Basic (MD5 dedup); scans recursively and mirrors subdirectories
 entomokit clean --input-dir images/raw/ --out-dir images/cleaned/
 
-# Recursive scan + perceptual hash
+# Perceptual hash dedup
 entomokit clean --input-dir images/ --out-dir cleaned/ \
-    --recursive --dedup-mode phash --phash-threshold 5
+    --dedup-mode phash --phash-threshold 5
 
-# Resize to shorter side 512px
+# Resize to shorter side 512px and pad to a square with the border median color
 entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
-    --out-short-size 512 --out-image-format png
+    --out-short-size 512 --out-image-format png --pad-color median
 
 # Keep original size and EXIF data
 entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
@@ -492,11 +542,10 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--input-dir` | Input directory | Required |
+| `--input-dir` | Input directory (scanned recursively) | Required |
 | `--out-dir` | Output directory | Required |
-| `--recursive` | Scan subdirectories; output mirrors input subdirectory structure by default | No |
-| `--flatten` | With `--recursive`: collect all outputs into a single flat directory | No |
 | `--out-short-size` | Shorter side size (-1 = original) | 512 |
+| `--pad-color` | Pad non-square images to a square: `none`, `median`, `black`, `white` (`median` uses the median RGB of the border pixels) | none |
 | `--dedup-mode` | `none`, `md5`, `phash`, `md5+phash` (runs md5 first, then phash on survivors) | md5 |
 | `--phash-threshold` | Phash similarity threshold | 5 |
 | `--out-image-format` | jpg/png/tif | jpg |
@@ -504,6 +553,9 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 | `--threads` | Parallel threads | 12 |
 | `--resume` | Continue into a non-empty `--out-dir` without error | No |
 | `--overwrite` | Delete `--out-dir` contents and start fresh | No |
+
+Cleaned images are written under `out-dir/cleaned_images/<input-relative path>`.
+Resize happens first, then padding.
 
 ---
 
@@ -538,9 +590,14 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 **Output:**
 ```
 output_dir/
-├── images/
+├── images/               # mirrors each input's subdirectory path
+│   └── <subdir>/source_aug01.png
 └── augment_manifest.json
 ```
+
+Input directories are scanned recursively. Every output keeps an
+`_augNN` suffix (even with `--multiply 1`), so the original basename is never
+overwritten. Manifest `original` and `augmented` entries are input-relative paths.
 
 ---
 
@@ -649,7 +706,8 @@ entomokit synthesize \
 | `--target-dir` | Target images (with alpha channel) | Required |
 | `--background-dir` | Background images | Required |
 | `--out-dir` | Output directory | Required |
-| `--num-syntheses` | Syntheses per target | 10 |
+| `--num-syntheses` | Positive integer = syntheses per target; a fraction between 0 and 1 = share of targets to sample, one synthesis each | 1 |
+| `--seed` | Base random seed for target sampling and task-local synthesis randomness | 42 |
 | `--annotation-output-format` | `coco`, `voc`, `yolo` | `coco` |
 | `--coco-bbox-format` | `xywh`, `xyxy` | `xywh` |
 | `--rotate` | Max rotation degrees | 0 |
@@ -664,11 +722,28 @@ entomokit synthesize \
 **Output (COCO):**
 ```
 output_dir/
-├── images/
-│   ├── target_01.png
-│   └── ...
+├── images/                 # mirrors each target's subdirectory path
+│   └── <subdir>/target_01.png
 └── annotations.coco.json
 ```
+
+Target and background directories are scanned recursively. Backgrounds are
+sampled with replacement per synthesis task, so a run with N syntheses per
+target is not capped by the number of backgrounds. A fractional
+`--num-syntheses` (for example `0.5`) deterministically selects that share of
+targets for a fixed `--seed` and produces one synthesis per selected target.
+Annotations mirror the same target-relative paths as the images. Output files
+are named `{target_stem}_{NN}`; two targets in the same directory that differ
+only by extension (for example `a.png` and `a.tif`) get a short path digest in
+the stem so neither overwrites the other. With `--resume`, the unified
+`annotations.coco.json` is merged with the previous file, so skipped targets
+keep their annotations.
+
+`--target-dir` must contain RGBA cutouts (for example mask-mode `segment`
+output: `--segmentation-method sam3`, `otsu`, or `grabcut`). Bbox-mode crop
+output (`sam3-bbox`, `otsu-bbox`, `grabcut-bbox`), repaired images, and raw
+photos are RGB and are rejected. When every target fails, the error lists the
+observed modes (for example `18 RGB`).
 
 **Output (YOLO):**
 ```
@@ -753,6 +828,7 @@ entomokit classify train \
 | `--patience` | Early-stopping patience | 10 |
 | `--top-k` | Checkpoint averaging count | 3 |
 | `--focal-loss` | Enable focal loss | No |
+| `--seed` | Random seed passed to AutoMM for reproducible training | 0 |
 | `--device` | `auto/cpu/cuda/mps` | `auto` |
 | `--batch-size` | Batch size | 32 |
 | `--num-workers` | DataLoader workers | 4 |
@@ -798,6 +874,11 @@ entomokit classify predict \
 - If CSV `image` values are already readable paths, CSV is used directly
 - If CSV `image` values are names/relative paths, also provide `--images-dir`
 - If only `--images-dir` is given, all images in that directory are predicted
+
+Directory discovery is recursive. Discovered images are recorded as paths
+relative to `--images-dir` (for example `beetles/a.jpg`), so nested same-named
+images stay distinct. Explicit CSV paths supplied via `--input-csv` are used
+unchanged.
 
 Pass `--overwrite` to delete `--out-dir` contents and re-predict all inputs.
 
@@ -865,9 +946,11 @@ entomokit classify embed \
 ```
 
 **Outputs**:
-- `embeddings.csv` — Feature vectors (feat_0, feat_1, ...)
+- `embeddings.csv` — Feature vectors (feat_0, feat_1, ...); the `image` column is the path relative to `--images-dir` (for example `beetles/a.jpg`)
 - `metrics.csv` — Quality metrics
 - `umap.pdf` — UMAP visualization (with `--visualize`)
+
+`--images-dir` is scanned recursively.
 
 Pass `--overwrite` to delete `--out-dir` contents and re-extract embeddings.
 
@@ -893,6 +976,7 @@ Pass `--overwrite` to delete `--out-dir` contents and re-extract embeddings.
 - `--label-csv` must have unique `image` values and at least one `image` value matching an image **file** name in `--images-dir`. Duplicate rows and an empty overlap are rejected before any extraction; a directory whose name looks like an image does not count.
 - `--metrics-sample-size` caps the number of rows used by **all** quality metrics (clustering, Recall@K, kNN, mAP@R, silhouette, and linear probing) — it is not specific to the linear probe — and it is the main runtime knob. `mAP@R` still ranks every query against every other row, so its neighbour-index matrix grows with the square of the sample size (~800 MB at the default 10000); lower this value when memory is tight.
 - Values are **not numerically comparable with runs produced before 0.6.2**: the CV split, the silhouette distance metric, index-based self-exclusion in Recall@K and mAP@R, and unavailable-value handling all changed. Field names are unchanged, and `Linear_Probing_Balanced_Acc` is a new column inserted after `Linear_Probing_Acc` (all later columns shift right by one — select by header name, not position).
+- These kNN/evaluation corrections shipped in `0.6.2`; `0.7.0` does not change the embedding metrics algorithm.
 
 ---
 
@@ -1010,7 +1094,9 @@ entomokit update --yes     # install without prompt
 
 ### Logging
 
-All commands save `log.txt` to the output directory containing:
+All commands save `log.txt` to the output directory. The header begins with:
+- `EntomoKit version:` (for example `0.7.0`)
+- `Commit:` (short Git commit id, or `unknown` outside a checkout)
 - Full command line
 - Timestamp
 - All parameter values

@@ -134,7 +134,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--resume",
         action="store_true",
-        help="Skip images already present in --out-dir and continue a previous run.",
+        help=(
+            "Continue a previous run. Inputs whose exact single-mask output "
+            "already exists are skipped; multi-mask inputs are always "
+            "re-processed so a partially written set is never treated as done."
+        ),
     )
     p.add_argument(
         "--overwrite",

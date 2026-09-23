@@ -1,4 +1,5 @@
 # src/segmentation.py
+import hashlib
 import cv2
 import numpy as np
 from pathlib import Path
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
+from src.cleaning.processor import clean_filename
+from src.common.files import IMAGE_EXTENSIONS, iter_files
 from src.sam3_wrapper import SAM3Wrapper
 from src.utils import (
     load_image,
@@ -30,6 +33,58 @@ class ImageComputation:
     image: np.ndarray
     masks: list
     scores: list
+
+
+def sample_id_for(relative_path: str) -> str:
+    """Encode an input-relative path as a unique, filesystem-safe sample ID.
+
+    Standard VOC/YOLO/COCO consumers need flat file names, so nested duplicate
+    basenames are disambiguated with a stable digest of the relative path.
+    """
+    stem = clean_filename(Path(relative_path).stem)
+    digest = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()[:12]
+    return f"{stem}__{digest}"
+
+
+def collect_segment_artifacts(images_dir: Path, output_format: str) -> set:
+    """Return sample IDs whose exact single-mask artifact already exists.
+
+    Segment writes ``{sample_id}.{ext}`` for a single mask and
+    ``{sample_id}_{NN}.{ext}`` for multiple masks. Only the exact single-mask
+    artifact is trusted as completion: a multi-mask input may have been
+    interrupted between masks, and without a recorded mask count a partial set
+    cannot be told apart from a complete one, so multi-mask inputs are
+    re-processed on ``--resume``.
+    """
+    ext = f".{output_format.lower()}"
+    completed: set = set()
+    if not images_dir.is_dir():
+        return completed
+    for candidate in images_dir.iterdir():
+        if candidate.is_file() and candidate.name.endswith(ext):
+            completed.add(candidate.name[: -len(ext)])
+    return completed
+
+
+def _remove_stale_crops(images_dir: Path, base_name: str, output_format: str) -> None:
+    """Drop a sample's previous crop files before its new ones are written.
+
+    Multi-mask inputs are always re-processed on ``--resume`` (no mask count is
+    recorded), so a run producing fewer masks must clear orphan
+    ``{base_name}_{NN}.{ext}`` crops from the previous run. Only the exact
+    single-mask name and ``_{digits}`` multi-mask names segment itself emits are
+    removed; other prefixed files are left alone.
+    """
+    ext = f".{output_format.lower()}"
+    prefix = f"{base_name}_"
+    for candidate in images_dir.iterdir():
+        if not candidate.is_file() or not candidate.name.endswith(ext):
+            continue
+        stem = candidate.name[: -len(ext)]
+        if stem == base_name or (
+            stem.startswith(prefix) and stem[len(prefix) :].isdigit()
+        ):
+            candidate.unlink()
 
 
 class SegmentationProcessor:
@@ -76,6 +131,9 @@ class SegmentationProcessor:
         self.coco_output_mode = coco_output_mode.lower()
         self.coco_bbox_format = coco_bbox_format
         self.metadata_manager = COCOMetadataManager()
+        # Unified-COCO samples re-processed this run that produced no masks; used
+        # to drop their stale prior annotations during the resume merge.
+        self._no_mask_sample_ids: set = set()
         # Accumulators for unified COCO output via annotation_writer
         self._ann_image_paths: list = []
         self._ann_detections: dict = {}
@@ -375,10 +433,24 @@ class SegmentationProcessor:
         filtered_scores = computation.scores
         image = computation.image
 
+        # The input was computed successfully, so its previous artifacts are now
+        # stale regardless of the outcome: clear them before deciding what this
+        # run writes (a zero-mask result must not leave the old crops behind).
+        _remove_stale_crops(images_dir, base_name, output_format)
+
         if len(filtered_masks) == 0:
-            logger.warning(
-                f"No masks passed confidence threshold ({self.confidence_threshold})"
-            )
+            source = original_path or base_name
+            if self.confidence_threshold > 0:
+                reason = (
+                    f"No masks passed confidence threshold "
+                    f"({self.confidence_threshold})"
+                )
+            else:
+                reason = f"No masks returned by {self.segmentation_method}"
+            logger.warning(f"{reason}: {source}")
+            self._no_mask_sample_ids.add(base_name)
+            self._remove_sample_artifacts(output_dir, base_name, output_format)
+            results["no_mask_source"] = source
             return results
 
         actual_idx = 0
@@ -570,11 +642,19 @@ class SegmentationProcessor:
                 annotations_path = annotations_dir / f"{base_name}.xml"
                 with open(annotations_path, "w") as f:
                     f.write(xml_content)
-                # Append stem to ImageSets/Main/default.txt
+                # Append stem to ImageSets/Main/default.txt (dedup: resume may
+                # re-process a sample whose row is already present).
                 imagesets_dir = output_dir / "ImageSets" / "Main"
                 imagesets_dir.mkdir(parents=True, exist_ok=True)
-                with open(imagesets_dir / "default.txt", "a") as f:
-                    f.write(f"{base_name}\n")
+                imagesets_path = imagesets_dir / "default.txt"
+                existing_stems = (
+                    imagesets_path.read_text(encoding="utf-8").split()
+                    if imagesets_path.is_file()
+                    else []
+                )
+                if base_name not in existing_stems:
+                    with open(imagesets_path, "a", encoding="utf-8") as f:
+                        f.write(f"{base_name}\n")
                 if include_segmentation_annotations:
                     logger.info(
                         "VOC segmentation is saved as mask PNG in SegmentationClass/; XML contains bbox only."
@@ -848,6 +928,40 @@ class SegmentationProcessor:
         else:
             return output_dir / "annotations"
 
+    def _remove_sample_artifacts(
+        self, output_dir: Path, base_name: str, output_format: str
+    ) -> None:
+        """Remove a re-processed sample's per-sample side files.
+
+        Called when an input that previously produced output now yields no
+        masks, so the annotation tree matches the cleared ``images/`` directory
+        instead of referencing artifacts this run did not produce.
+        """
+        annotations_dir = self._get_annotation_output_dir(output_dir)
+        if annotations_dir.is_dir():
+            for suffix in (".xml", ".txt", ".json"):
+                candidate = annotations_dir / f"{base_name}{suffix}"
+                if candidate.is_file():
+                    candidate.unlink()
+
+        for side_file in (
+            output_dir / "SegmentationClass" / f"{base_name}.png",
+            output_dir / "repaired_images" / f"{base_name}.{output_format}",
+        ):
+            if side_file.is_file():
+                side_file.unlink()
+
+        imagesets_path = output_dir / "ImageSets" / "Main" / "default.txt"
+        if imagesets_path.is_file():
+            stems = [
+                stem
+                for stem in imagesets_path.read_text(encoding="utf-8").split()
+                if stem != base_name
+            ]
+            imagesets_path.write_text(
+                "\n".join(stems) + ("\n" if stems else ""), encoding="utf-8"
+            )
+
     def _save_coco_annotation(
         self,
         output_name: str,
@@ -1051,44 +1165,96 @@ class SegmentationProcessor:
         if num_workers <= 0:
             raise ValueError(f"num_workers must be positive, got {num_workers}")
 
-        # Find all images
-        image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-        image_paths = sorted(
-            p for p in input_dir.iterdir() if p.suffix.lower() in image_extensions
-        )
+        # Find all images recursively (segment flattens samples into images/ with
+        # unique encoded IDs instead of mirroring input directories).
+        image_paths = iter_files(input_dir, IMAGE_EXTENSIONS)
 
         logger.info(f"Found {len(image_paths)} images to process")
 
         results: Dict[str, Any] = {"processed": 0, "failed": 0, "output_files": []}
+        no_mask_sources: List[str] = []
+        # Sources computed successfully this run; used to refresh the no-mask ledger.
+        computed_sources: set = set()
+
+        def _record_no_mask(result: Dict[str, Any]) -> None:
+            source = result.get("no_mask_source")
+            if source:
+                no_mask_sources.append(str(source))
 
         cpu_parallel_methods = {"otsu", "otsu-bbox", "grabcut", "grabcut-bbox"}
         use_parallel = self.segmentation_method in cpu_parallel_methods and num_workers > 1
 
+        existing_artifacts = (
+            collect_segment_artifacts(output_dir / "images", output_format)
+            if skip_existing
+            else set()
+        )
+        self._no_mask_sample_ids = set()
+
+        # Snapshot the unified COCO file before this run overwrites it, so
+        # skipped samples keep their annotations (and re-processed ones replace
+        # their previous entry rather than duplicating it).
+        prior_coco = None
+        if (
+            skip_existing
+            and self.annotation_format == "coco"
+            and self.coco_output_mode == "unified"
+        ):
+            from src.common.annotation_writer import (
+                coco_bbox_format_of,
+                load_coco_json,
+            )
+
+            prior_coco = load_coco_json(output_dir / "annotations.coco.json")
+            if prior_coco is not None and prior_coco.get("annotations"):
+                prior_format = coco_bbox_format_of(prior_coco)
+                if prior_format != self.coco_bbox_format:
+                    raise ValueError(
+                        "Cannot change --coco-bbox-format on --resume: existing "
+                        f"annotations.coco.json uses {prior_format!r} but this run "
+                        f"requested {self.coco_bbox_format!r}. Delete the output "
+                        "directory or keep the original format."
+                    )
+
+        def _existing_output(img_path: Path) -> bool:
+            sample_id = sample_id_for(img_path.relative_to(input_dir).as_posix())
+            return sample_id in existing_artifacts
+
         def _process_single(img_path: Path) -> None:
-            if skip_existing:
-                images_dir_check = output_dir / "images"
-                if any(images_dir_check.glob(f"{img_path.stem}*")):
-                    results.setdefault("skipped", 0)
-                    results["skipped"] += 1
-                    return
+            if skip_existing and _existing_output(img_path):
+                results.setdefault("skipped", 0)
+                results["skipped"] += 1
+                return
             comp = self._compute_image(img_path)
             result = self._write_computation(
                 comp,
                 output_dir=output_dir,
-                base_name=img_path.stem,
+                base_name=sample_id_for(img_path.relative_to(input_dir).as_posix()),
                 original_path=str(img_path),
                 output_format=output_format,
             )
+            _record_no_mask(result)
             results["processed"] += 1
+            computed_sources.add(str(img_path))
             results["output_files"].extend(result["output_files"])
 
         if use_parallel:
+            # Decide skips before submitting so resume does not run inference on
+            # inputs whose exact single-mask artifact already exists.
+            pending_paths = [
+                path
+                for path in image_paths
+                if not (skip_existing and _existing_output(path))
+            ]
+            if skip_existing:
+                results.setdefault("skipped", 0)
+                results["skipped"] += len(image_paths) - len(pending_paths)
             with ThreadPoolExecutor(max_workers=num_workers) as executor:
                 futures = [
                     executor.submit(self._compute_image, path)
-                    for path in image_paths
+                    for path in pending_paths
                 ]
-                for img_path, future in zip(image_paths, futures):
+                for img_path, future in zip(pending_paths, futures):
                     if shutdown_flag is not None and shutdown_flag():
                         logger.info(
                             "Shutdown requested. Exiting after completing current image."
@@ -1096,21 +1262,19 @@ class SegmentationProcessor:
                         break
 
                     try:
-                        if skip_existing:
-                            images_dir_check = output_dir / "images"
-                            if any(images_dir_check.glob(f"{img_path.stem}*")):
-                                results.setdefault("skipped", 0)
-                                results["skipped"] += 1
-                                continue
                         comp = future.result()
                         result = self._write_computation(
                             comp,
                             output_dir=output_dir,
-                            base_name=img_path.stem,
+                            base_name=sample_id_for(
+                                img_path.relative_to(input_dir).as_posix()
+                            ),
                             original_path=str(img_path),
                             output_format=output_format,
                         )
+                        _record_no_mask(result)
                         results["processed"] += 1
+                        computed_sources.add(str(img_path))
                         results["output_files"].extend(result["output_files"])
 
                     except Exception:
@@ -1130,14 +1294,56 @@ class SegmentationProcessor:
                     logger.exception(f"Failed to process {img_path}")
                     results["failed"] += 1
 
+        # Refresh the no-mask ledger from this run: drop inputs that succeeded
+        # (even a 0-mask input now has no stale entry once it produces a mask),
+        # keep entries for inputs this run did not touch, and add this run's
+        # 0-mask sources.
+        no_mask_path = output_dir / "no_mask_images.txt"
+        prior_entries = set()
+        if no_mask_path.is_file():
+            prior_entries = set(no_mask_path.read_text(encoding="utf-8").split())
+        no_mask_set = set(no_mask_sources)
+        ledger = (prior_entries - computed_sources) | no_mask_set
+        if ledger:
+            no_mask_path.write_text(
+                "\n".join(sorted(ledger)) + "\n", encoding="utf-8"
+            )
+        elif no_mask_path.is_file():
+            no_mask_path.unlink()
+        if no_mask_set:
+            logger.warning(
+                f"{len(no_mask_set)} image(s) produced no masks; list saved to "
+                f"{no_mask_path}"
+            )
+
         # Save metadata for COCO mode (unified) — keep segmentation/area fidelity
         if self.annotation_format == "coco" and self.coco_output_mode == "unified":
+            from src.common.annotation_writer import (
+                merge_coco_json,
+                record_coco_bbox_format,
+            )
+
             metadata_path = output_dir / "annotations.coco.json"
             self.metadata_manager.save(metadata_path)
             if self.coco_bbox_format == "xyxy":
                 from src.common.annotation_writer import _rewrite_coco_bbox_to_xyxy
 
                 _rewrite_coco_bbox_to_xyxy(metadata_path)
+            # Record the convention after any rewrite so a later resume can
+            # detect a format switch instead of silently mixing conventions.
+            record_coco_bbox_format(metadata_path, self.coco_bbox_format)
+            if prior_coco:
+                from src.common.annotation_writer import drop_coco_images
+
+                if self._no_mask_sample_ids:
+                    prior_coco = drop_coco_images(
+                        prior_coco,
+                        {
+                            f"{sample_id}.{output_format}"
+                            for sample_id in self._no_mask_sample_ids
+                        },
+                    )
+                merge_coco_json(prior_coco, metadata_path)
             logger.info(f"Saved COCO annotations to {metadata_path}")
 
         return results

@@ -277,7 +277,7 @@ pip install -e .
 | `--out-image-format` | 输出格式 | jpg |
 | `--dedup-mode` | 去重方式：none/md5/phash | md5 |
 | `--phash-threshold` | phash 相似阈值 | 5 |
-| `--recursive` | 扫描子目录 | 按需 |
+| `--pad-color` | 非正方形图像填充为正方形：none/median/black/white | 默认 none |
 
 **预检项**（执行前 Skill 主动检查）：
 - 输入目录存在且非空
@@ -330,13 +330,14 @@ pip install -e .
 **引导问题**：
 1. 目标图片目录？（需含 alpha 通道的 PNG）
 2. 背景图片目录？（自然场景图）
-3. 每张目标图合成多少张？（默认 10）
+3. 每张目标图合成多少张？（默认 1；也可用 0–1 之间的小数指定目标采样比例）
 
 **关键参数说明**：
 
 | 参数 | 说明 | 推荐值 |
 |---|---|---|
-| `--num-syntheses` | 每目标合成数量 | 10 |
+| `--num-syntheses` | 每目标合成数量（正整数）或目标采样比例（0–1 小数，每个选中目标 1 张） | 1 |
+| `--seed` | 目标采样与任务局部合成随机性基础种子 | 42 |
 | `--rotate` | 最大旋转角度 | 30 |
 | `--avoid-black-regions` | 避免粘贴到暗色区域 | 建议开启 |
 | `--color-match-strength` | 色调匹配强度（0-1） | 0.5 |

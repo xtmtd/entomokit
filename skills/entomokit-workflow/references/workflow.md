@@ -63,16 +63,22 @@ Recommended pre-run chain (must stay in order):
 1. Optional `extract-frames` when source is video.
 2. Mandatory `clean` in guided mode.
 3. Optional `segment`, `measure`, `synthesize`, `augment` based on user goals.
-4. Before `clean`, if nested class folders exist, confirm whether to use `--recursive`.
+4. All Phase 1 commands scan their input directories recursively. Ordinary processors (`extract-frames`, `measure`, `synthesize`, `clean`, `augment`) mirror each input's relative path into the output tree; `segment` is the exception: it flattens every image into `images/` with encoded flat sample IDs and per-format annotation directories (no input-path mirroring). Do not ask about `--recursive`.
 
 Segment method note:
 
 - Current supported values: `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`.
 - If user requests unsupported values, treat as unsupported, explain clearly, and propose nearest supported alternatives.
+- `segment` images that produce no masks are logged with their full source path and written to `<out-dir>/no_mask_images.txt`; mention that file when reporting a run so the user can review those inputs.
+
+Synthesize target note:
+
+- `synthesize --target-dir` requires RGBA cutouts. Use mask-mode `segment` output (`sam3`/`otsu`/`grabcut`, i.e. without `-bbox`) or another RGBA source. Never point it at raw photos, `*-bbox` crop output, or repaired images: those are RGB and will be rejected.
 
 Measure note:
 
 - `measure` expects segmentation masks from `--mask-dir` and writes CSV reports into `--out-dir`.
+- Masks are scanned recursively; CSV `file_name` values are relative to `--mask-dir` and are the `--resume` keys.
 - If physical scale is known, confirm `--pixel-size-um` (`um/px`) before run.
 - Before and after `measure`, remind user that body length/width are estimates from mask geometry and can deviate when appendages dominate, masks touch borders, or foreground is broken/merged.
 - Always report `metrics.csv`, `metrics_summary.csv`, and `metric_definitions.csv` paths after completion.

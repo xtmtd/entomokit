@@ -1,9 +1,13 @@
 """Synthesis processor for compositing target objects onto background images."""
 
+import hashlib
 import logging
+import math
 import multiprocessing
 import random
+import re
 import warnings
+from collections import Counter
 from pathlib import Path
 from typing import Callable, List, Tuple, Optional, Dict, Any
 
@@ -12,6 +16,8 @@ import numpy as np
 from PIL import Image
 from skimage import exposure
 from skimage.color import rgb2lab, lab2rgb
+
+from src.common.files import IMAGE_EXTENSIONS, iter_files
 
 try:
     from tqdm import tqdm
@@ -26,6 +32,102 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings(
     "ignore", category=RuntimeWarning, module="skimage.color.colorconv"
 )
+
+
+def _annotation_stem(output_filename: str) -> str:
+    """Preserve relative parents while stripping any file extension."""
+    rel = Path(output_filename)
+    return str(rel.parent / rel.stem)
+
+
+def _image_mode(image_path: Path) -> str:
+    """Return the PIL mode of an image, or 'unreadable'."""
+    try:
+        with Image.open(image_path) as img:
+            return img.mode
+    except Exception:
+        return "unreadable"
+
+
+def resolve_target_stems(target_paths: List[Path], target_dir: Path) -> dict:
+    """Return a stable output stem per target, disambiguating same-dir clashes.
+
+    Different directories are already separated by mirrored output paths, so
+    only targets sharing a directory *and* a stem (for example ``a.png`` and
+    ``a.tif``) need a digest suffix.
+    """
+    groups: dict = {}
+    for path in target_paths:
+        groups.setdefault((path.parent, path.stem), []).append(path)
+
+    stems: dict = {}
+    for paths in groups.values():
+        if len(paths) == 1:
+            stems[paths[0]] = paths[0].stem
+            continue
+        for path in paths:
+            rel = path.relative_to(target_dir).as_posix()
+            digest = hashlib.sha256(rel.encode("utf-8")).hexdigest()[:8]
+            stems[path] = f"{path.stem}__{digest}"
+    return stems
+
+
+def derive_seed(base: int, index: int) -> int:
+    """Derive a stable task seed from a base seed and an index."""
+    digest = hashlib.sha256(f"{base}:{index}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def _existing_synthesis_outputs(
+    target_out_dir: Path, stem: str, extension: str
+) -> dict:
+    """Map copy index -> existing ``{stem}_{NN}{ext}`` file for one target."""
+    found: dict = {}
+    if not target_out_dir.is_dir():
+        return found
+    pattern = re.compile(rf"^{re.escape(stem)}_(\d+){re.escape(extension)}$")
+    for candidate in target_out_dir.iterdir():
+        if not candidate.is_file():
+            continue
+        match = pattern.match(candidate.name)
+        if match:
+            digits = match.group(1)
+            # The generator writes ``{index:02d}``; reject non-canonical names
+            # such as ``a_1.png`` so they are not mistaken for ``a_01.png``.
+            if digits != f"{int(digits):02d}":
+                continue
+            found[int(digits)] = candidate
+    return found
+
+
+def resolve_num_syntheses(
+    value: float, target_count: int, seed: int = 42
+) -> Tuple[List[int], int]:
+    """Resolve --num-syntheses into selected target indices and a per-target count.
+
+    Positive integer-valued input selects every target and returns that count.
+    A value strictly between 0 and 1 selects ``floor(target_count * value)``
+    targets (at least one when targets exist) and returns one synthesis each.
+    """
+    if target_count <= 0:
+        return [], 0
+
+    if isinstance(value, float):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"num_syntheses must be positive, got {value}")
+        if 0 < value < 1:
+            count = min(target_count, max(1, math.floor(target_count * value)))
+            indices = sorted(random.Random(seed).sample(range(target_count), count))
+            return indices, 1
+        if not value.is_integer():
+            raise ValueError(
+                f"num_syntheses must be a positive integer or a fraction in (0, 1), got {value}"
+            )
+
+    count = int(value)
+    if count <= 0:
+        raise ValueError(f"num_syntheses must be positive, got {value}")
+    return list(range(target_count)), count
 
 
 class SynthesisProcessor:
@@ -67,13 +169,8 @@ class SynthesisProcessor:
     def load_images_from_directory(
         self, directory: Path, desc: str = "Loading images"
     ) -> List[np.ndarray]:
-        """Load all images from directory."""
-        image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-        image_paths = [
-            p
-            for p in directory.iterdir()
-            if p.suffix.lower() in image_extensions and p.is_file()
-        ]
+        """Load all images from directory recursively."""
+        image_paths = iter_files(directory, IMAGE_EXTENSIONS)
 
         images = []
         for img_path in image_paths:
@@ -118,11 +215,9 @@ class SynthesisProcessor:
         """Save image to file."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if image.shape[2] == 4 and self.output_format == "jpg":
-            img_pil = Image.fromarray(image[:, :, :3], mode="RGB")
+            img_pil = Image.fromarray(image[:, :, :3])
         else:
-            img_pil = Image.fromarray(
-                image, mode="RGBA" if image.shape[2] == 4 else "RGB"
-            )
+            img_pil = Image.fromarray(image)
         if self.output_format == "jpg":
             img_pil.save(output_path, "JPEG", quality=quality, optimize=True)
         else:
@@ -172,6 +267,7 @@ class SynthesisProcessor:
         background: np.ndarray,
         target_shape: Tuple[int, ...],
         edge_margin: float = 0.1,
+        rng: Optional[np.random.Generator] = None,
     ) -> Tuple[int, int, float]:
         """Find random position with constraint (avoid edges and optionally black regions).
 
@@ -180,6 +276,7 @@ class SynthesisProcessor:
         """
         bg_h, bg_w = background.shape[:2]
         target_h, target_w = target_shape[:2]
+        rng = rng if rng is not None else np.random.default_rng()
         margin_x = int(bg_w * edge_margin)
         margin_y = int(bg_h * edge_margin)
         min_x = margin_x
@@ -194,23 +291,23 @@ class SynthesisProcessor:
             max_y = max(1, bg_h - target_h)
         max_attempts = 100
         if not self.avoid_black_regions:
-            x = np.random.randint(min_x, max_x) if max_x > min_x else min_x
-            y = np.random.randint(min_y, max_y) if max_y > min_y else min_y
+            x = int(rng.integers(min_x, max_x)) if max_x > min_x else min_x
+            y = int(rng.integers(min_y, max_y)) if max_y > min_y else min_y
             return x, y, 1.0
         downscale_factor = 1.0
         while downscale_factor >= 0.1:
             scaled_target_h = int(target_h * downscale_factor)
             scaled_target_w = int(target_w * downscale_factor)
             for _ in range(max_attempts):
-                x = np.random.randint(min_x, max_x) if max_x > min_x else min_x
-                y = np.random.randint(min_y, max_y) if max_y > min_y else min_y
+                x = int(rng.integers(min_x, max_x)) if max_x > min_x else min_x
+                y = int(rng.integers(min_y, max_y)) if max_y > min_y else min_y
                 if not self._is_region_black(
                     background, x, y, scaled_target_w, scaled_target_h
                 ):
                     return x, y, downscale_factor
             downscale_factor -= 0.1
-        x = np.random.randint(min_x, max_x) if max_x > min_x else min_x
-        y = np.random.randint(min_y, max_y) if max_y > min_y else min_y
+        x = int(rng.integers(min_x, max_x)) if max_x > min_x else min_x
+        y = int(rng.integers(min_y, max_y)) if max_y > min_y else min_y
         return x, y, 1.0
 
     def _get_random_position_no_constraint(
@@ -218,10 +315,12 @@ class SynthesisProcessor:
         background: np.ndarray,
         target_shape: Tuple[int, ...],
         edge_margin: float = 0.1,
+        rng: Optional[np.random.Generator] = None,
     ) -> Tuple[int, int]:
         """Get random position without black region checking."""
         bg_h, bg_w = background.shape[:2]
         target_h, target_w = target_shape[:2]
+        rng = rng if rng is not None else np.random.default_rng()
         margin_x = int(bg_w * edge_margin)
         margin_y = int(bg_h * edge_margin)
         min_x = margin_x
@@ -234,8 +333,8 @@ class SynthesisProcessor:
         if max_y <= min_y:
             min_y = 0
             max_y = max(1, bg_h - target_h)
-        x = np.random.randint(min_x, max_x) if max_x > min_x else min_x
-        y = np.random.randint(min_y, max_y) if max_y > min_y else min_y
+        x = int(rng.integers(min_x, max_x)) if max_x > min_x else min_x
+        y = int(rng.integers(min_y, max_y)) if max_y > min_y else min_y
         return x, y
 
     def _paste_with_alpha(
@@ -266,13 +365,17 @@ class SynthesisProcessor:
         return result
 
     def _rotate_image(
-        self, image: np.ndarray, angle: Optional[float] = None
+        self,
+        image: np.ndarray,
+        angle: Optional[float] = None,
+        rng: Optional[random.Random] = None,
     ) -> np.ndarray:
         """Rotate image by random angle within specified degrees."""
         if self.rotate_degrees <= 0:
             return image
         if angle is None:
-            angle = random.uniform(-self.rotate_degrees, self.rotate_degrees)
+            rng = rng if rng is not None else random.Random()
+            angle = rng.uniform(-self.rotate_degrees, self.rotate_degrees)
         h, w = image.shape[:2]
         center = (w // 2, h // 2)
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
@@ -302,9 +405,11 @@ class SynthesisProcessor:
         scale_y = bg_h / target_h if target_h > 0 else 1.0
         return min(scale_x, scale_y)
 
-    def _get_target_filename(self, target_image_path: Path, counter: int) -> str:
+    def _get_target_filename(
+        self, target_image_path: Path, counter: int, target_stem: Optional[str] = None
+    ) -> str:
         """Generate output filename from target filename and counter."""
-        base_name = target_image_path.stem
+        base_name = target_stem if target_stem else target_image_path.stem
         counter_str = f"{counter:02d}"
         return f"{base_name}_{counter_str}"
 
@@ -337,6 +442,9 @@ class SynthesisProcessor:
         target_path: Optional[Path] = None,
         counter: int = 0,
         background_path: Optional[Path] = None,
+        rotation_angle: Optional[float] = None,
+        np_seed: Optional[int] = None,
+        target_stem: Optional[str] = None,
     ) -> Tuple[
         Optional[np.ndarray],
         Optional[str],
@@ -357,18 +465,24 @@ class SynthesisProcessor:
             target_path: Original target file path for naming output
             counter: Counter for output filename
             background_path: Original background file path
+            rotation_angle: Pre-generated rotation angle (task-local randomness)
+            np_seed: Seed for the task-local NumPy generator
 
         Returns:
             Tuple of (result_image, output_filename, scale_ratio, rotation_angle, target_path, background_path, position_x, position_y, final_target)
         """
         try:
+            np_rng = np.random.default_rng(np_seed)
+            py_rng = random.Random(np_seed)
             if target_image.shape[2] == 4:
                 mask = target_image[:, :, 3]
             else:
                 mask = np.ones(target_image.shape[:2], dtype=np.uint8) * 255
             mask_area = int(np.sum(mask > 0))
             if scale_ratio is None:
-                scale_ratio = random.uniform(self.area_ratio_min, self.area_ratio_max)
+                scale_ratio = py_rng.uniform(
+                    self.area_ratio_min, self.area_ratio_max
+                )
             scale_factor = self._calculate_scale_factor(
                 background.shape, mask_area, scale_ratio
             )
@@ -416,9 +530,12 @@ class SynthesisProcessor:
                 )
             angle = None
             if self.rotate_degrees > 0:
-                angle = random.uniform(-self.rotate_degrees, self.rotate_degrees)
+                if rotation_angle is not None:
+                    angle = rotation_angle
+                else:
+                    angle = py_rng.uniform(-self.rotate_degrees, self.rotate_degrees)
                 logger.debug(f"Selected rotation angle: {angle:.2f} degrees")
-            target_rotated = self._rotate_image(target_scaled, angle)
+            target_rotated = self._rotate_image(target_scaled, angle, rng=py_rng)
             downscale_factor = 1.0
             while (
                 target_rotated.shape[0] > background.shape[0]
@@ -463,7 +580,7 @@ class SynthesisProcessor:
                 logger.debug(
                     f"Auto-downscaling target to fit (scale: {downscale_factor:.2f})"
                 )
-                target_rotated = self._rotate_image(target_scaled, angle)
+                target_rotated = self._rotate_image(target_scaled, angle, rng=py_rng)
             final_target = target_rotated
             final_target_for_check = final_target.copy()
             x, y = 0, 0
@@ -501,7 +618,10 @@ class SynthesisProcessor:
 
                     for attempt in range(max_attempts):
                         x, y = self._get_random_position_no_constraint(
-                            background, (current_h, current_w, 4), edge_margin=0.05
+                            background,
+                            (current_h, current_w, 4),
+                            edge_margin=0.05,
+                            rng=np_rng,
                         )
 
                         region = background[y : y + current_h, x : x + current_w]
@@ -532,18 +652,26 @@ class SynthesisProcessor:
                         )
                     else:
                         x, y = self._get_random_position_no_constraint(
-                            background, final_target_for_check.shape, edge_margin=0.05
+                            background,
+                            final_target_for_check.shape,
+                            edge_margin=0.05,
+                            rng=np_rng,
                         )
             else:
                 x, y = self._get_random_position_no_constraint(
-                    background, final_target_for_check.shape, edge_margin=0.05
+                    background,
+                    final_target_for_check.shape,
+                    edge_margin=0.05,
+                    rng=np_rng,
                 )
             result = self._paste_with_alpha(background, final_target_for_check, x, y)
             if self.color_match_strength > 0:
                 result = self._match_lab_histograms(result, background)
             output_filename = None
             if target_path is not None and counter > 0:
-                output_filename = self._get_target_filename(target_path, counter)
+                output_filename = self._get_target_filename(
+                    target_path, counter, target_stem
+                )
 
             return (
                 result,
@@ -572,11 +700,27 @@ class SynthesisProcessor:
 
     def _synthesize_single_wrapper(self, args):
         """Wrapper for multiprocessing - calls synthesize_single with args tuple."""
-        target_img, background, scale_ratio, target_path, counter, background_path = (
-            args
-        )
+        (
+            target_img,
+            background,
+            scale_ratio,
+            target_path,
+            counter,
+            background_path,
+            rotation_angle,
+            np_seed,
+            target_stem,
+        ) = args
         result = self.synthesize_single(
-            target_img, background, scale_ratio, target_path, counter, background_path
+            target_img,
+            background,
+            scale_ratio,
+            target_path,
+            counter,
+            background_path,
+            rotation_angle=rotation_angle,
+            np_seed=np_seed,
+            target_stem=target_stem,
         )
         return (
             result[0],
@@ -813,8 +957,8 @@ class SynthesisProcessor:
             rotation_angle=rotation_angle if rotation_angle is not None else 0.0,
         )
 
-        base_name = Path(output_filename).stem
-        annotations_path = annotations_dir / f"{base_name}.json"
+        annotations_path = annotations_dir / f"{_annotation_stem(output_filename)}.json"
+        annotations_path.parent.mkdir(parents=True, exist_ok=True)
         manager.save(annotations_path)
 
     def _save_voc_single(
@@ -894,8 +1038,8 @@ class SynthesisProcessor:
             segmentation=adjusted_polygon if adjusted_polygon else None,
         )
 
-        base_name = Path(output_filename).stem
-        annotations_path = annotations_dir / f"{base_name}.xml"
+        annotations_path = annotations_dir / f"{_annotation_stem(output_filename)}.xml"
+        annotations_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(annotations_path, "w", encoding="utf-8") as f:
             f.write(xml_content)
@@ -976,8 +1120,8 @@ class SynthesisProcessor:
             segmentation=adjusted_polygon if adjusted_polygon else None,
         )
 
-        base_name = Path(output_filename).stem
-        labels_path = labels_dir / f"{base_name}.txt"
+        labels_path = labels_dir / f"{_annotation_stem(output_filename)}.txt"
+        labels_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(labels_path, "w", encoding="utf-8") as f:
             f.write(yolo_content)
@@ -997,34 +1141,105 @@ class SynthesisProcessor:
         else:
             return output_dir / "annotations"
 
+    def _remove_synthesis_annotation(
+        self, output_dir: Path, rel_parent: Path, stem: str, index: int
+    ) -> None:
+        """Remove the per-synthesis annotation files for one stale copy.
+
+        Unified COCO has no per-copy file; its stale entries are dropped from
+        the prior payload via ``drop_coco_images()`` instead.
+        """
+        name = (rel_parent / f"{stem}_{index:02d}").as_posix()
+        for directory, suffix in (
+            ("Annotations", ".xml"),
+            ("labels", ".txt"),
+            ("annotations", ".json"),
+        ):
+            path = output_dir / directory / f"{name}{suffix}"
+            if path.is_file():
+                path.unlink()
+
+    def _finalize_result(
+        self,
+        result,
+        image_output_dir: Path,
+        target_dir: Path,
+        output_dir: Path,
+        synthesis_id: int,
+    ) -> None:
+        """Write one synthesis and its annotation using target-relative paths."""
+        target_path = Path(result[4]) if result[4] is not None else None
+        rel_parent = Path()
+        if target_path is not None:
+            try:
+                rel_parent = target_path.parent.relative_to(target_dir)
+            except ValueError:
+                rel_parent = Path()
+
+        if result[1]:
+            out_dir = image_output_dir / rel_parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_path = out_dir / f"{result[1]}.{self.output_format}"
+            annotation_name = (rel_parent / result[1]).as_posix()
+        else:
+            output_path = (
+                image_output_dir / f"synth_{synthesis_id:06d}.{self.output_format}"
+            )
+            annotation_name = f"synth_{synthesis_id:06d}"
+
+        self._save_image(result[0], output_path)
+        if result[1] is not None:
+            self._save_annotation_for_image(
+                output_filename=annotation_name,
+                result=result[0],
+                scale_ratio=result[2],
+                rotation_angle=result[3],
+                position_x=result[6] if len(result) > 6 else None,
+                position_y=result[7] if len(result) > 7 else None,
+                output_dir=output_dir,
+                target_rgba=result[8] if len(result) > 8 else None,
+            )
+
     def process_directory(
         self,
         target_dir: Path,
         background_dir: Path,
         output_dir: Path,
-        num_syntheses: int = 10,
+        num_syntheses: float = 1,
         disable_tqdm: bool = False,
         threads: int = 1,
         skip_existing: bool = False,
         shutdown_flag: Optional[Callable[[], bool]] = None,
+        seed: int = 42,
     ) -> dict:
-        """Process all images in directories."""
+        """Process all images in directories with recursive scanning and seeded tasks."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         image_output_dir = output_dir / self.output_subdir
         image_output_dir.mkdir(parents=True, exist_ok=True)
 
-        image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
-        target_paths = [
-            p
-            for p in target_dir.iterdir()
-            if p.suffix.lower() in image_extensions and p.is_file()
-        ]
-        background_paths = [
-            p
-            for p in background_dir.iterdir()
-            if p.suffix.lower() in image_extensions and p.is_file()
-        ]
+        # Snapshot the unified COCO file before this run overwrites it, so
+        # resume-skipped samples keep their annotations.
+        prior_coco = None
+        if skip_existing and self.annotation_format == "coco":
+            from src.common.annotation_writer import (
+                coco_bbox_format_of,
+                load_coco_json,
+            )
+
+            prior_coco = load_coco_json(output_dir / "annotations.coco.json")
+            if prior_coco is not None and prior_coco.get("annotations"):
+                prior_format = coco_bbox_format_of(prior_coco)
+                if prior_format != self.coco_bbox_format:
+                    raise ValueError(
+                        "Cannot change --coco-bbox-format on --resume: existing "
+                        f"annotations.coco.json uses {prior_format!r} but this run "
+                        f"requested {self.coco_bbox_format!r}. Delete the output "
+                        "directory or keep the original format."
+                    )
+
+        target_paths = iter_files(target_dir, IMAGE_EXTENSIONS)
+        background_paths = iter_files(background_dir, IMAGE_EXTENSIONS)
 
         if not target_paths:
             logger.error("No target images found!")
@@ -1036,42 +1251,80 @@ class SynthesisProcessor:
         logger.info(f"Loaded {len(target_paths)} targets from {target_dir}")
         logger.info(f"Loaded {len(background_paths)} backgrounds from {background_dir}")
 
-        total_syntheses = len(target_paths) * num_syntheses
+        selected_indices, per_target = resolve_num_syntheses(
+            num_syntheses, len(target_paths), seed=seed
+        )
+        total_syntheses = len(selected_indices) * per_target
         synthesis_id = 0
-        skipped_images = 0
+        skipped_syntheses = 0
+        target_stems = resolve_target_stems(target_paths, target_dir)
+        stale_coco_file_names: set = set()
+        # Leftover copies are removed only after this target actually produced a
+        # new result, so a run that fails earlier (unreadable target or
+        # background) leaves the previous output untouched.
+        pending_stale_cleanup: dict = {}
+        written_targets: set = set()
 
         tasks = []
         failed_targets = 0
-        for target_path in target_paths:
+        failed_modes: Counter = Counter()
+        for target_idx in selected_indices:
+            target_path = target_paths[target_idx]
             if shutdown_flag is not None and shutdown_flag():
                 logger.info("Shutdown requested. Stopping synthesis.")
                 break
-            if skip_existing:
-                img_out = output_dir / self.output_subdir
-                if any(img_out.glob(f"{target_path.stem}_*")):
-                    skipped_images += 1
-                    continue
+            rel_parent = target_path.relative_to(target_dir).parent
+            target_stem = target_stems[target_path]
+            extension = f".{self.output_format}"
+            target_out_dir = image_output_dir / rel_parent
+            existing_outputs = _existing_synthesis_outputs(
+                target_out_dir, target_stem, extension
+            )
+            expected_indices = set(range(1, per_target + 1))
+            if skip_existing and set(existing_outputs) == expected_indices:
+                skipped_syntheses += per_target
+                continue
             try:
                 target_img = self._load_target_image(target_path)
             except ValueError as e:
+                failed_modes[_image_mode(target_path)] += 1
                 logger.error(str(e))
                 print(f"Error: {e}", file=__import__("sys").stderr)
                 failed_targets += 1
                 continue
             except Exception as e:
+                failed_modes["unreadable"] += 1
                 logger.warning(f"Failed to load {target_path}: {e}")
                 failed_targets += 1
                 continue
 
-            for syn_idx in range(num_syntheses):
-                background_path = random.choice(background_paths)
+            # Defer cleanup of leftover copies from a larger --num-syntheses
+            # until this target produces a replacement (see post-loop pass).
+            stale_indices = sorted(set(existing_outputs) - expected_indices)
+            if stale_indices:
+                pending_stale_cleanup[str(target_path)] = [
+                    (existing_outputs[index], rel_parent, target_stem, index)
+                    for index in stale_indices
+                ]
+            target_seed = derive_seed(seed, target_idx)
+            for syn_idx in range(per_target):
+                task_seed = derive_seed(target_seed, syn_idx)
+                task_rng = random.Random(task_seed)
+                background_path = task_rng.choice(background_paths)
                 try:
                     background = self._load_image(background_path)
                 except Exception as e:
                     logger.warning(f"Failed to load background {background_path}: {e}")
                     continue
 
-                scale_ratio = random.uniform(self.area_ratio_min, self.area_ratio_max)
+                scale_ratio = task_rng.uniform(
+                    self.area_ratio_min, self.area_ratio_max
+                )
+                rotation_angle = (
+                    task_rng.uniform(-self.rotate_degrees, self.rotate_degrees)
+                    if self.rotate_degrees > 0
+                    else None
+                )
                 tasks.append(
                     (
                         target_img,
@@ -1080,147 +1333,93 @@ class SynthesisProcessor:
                         target_path,
                         syn_idx + 1,
                         background_path,
+                        rotation_angle,
+                        task_seed,
+                        target_stem,
                     )
                 )
 
-        if failed_targets > 0 and len(tasks) == 0:
-            raise ValueError(
-                f"All {len(target_paths)} target image(s) failed to load. "
-                "Synthesis requires RGBA PNG images with an alpha channel. "
-                "Check that your --target-dir contains valid RGBA cutouts."
+        if failed_modes:
+            mode_summary = ", ".join(
+                f"{count} {mode}" for mode, count in failed_modes.most_common()
+            )
+            logger.warning(
+                f"{failed_targets} target image(s) failed to load by mode: "
+                f"{mode_summary}"
             )
 
+        if failed_targets > 0 and len(tasks) == 0:
+            mode_summary = ", ".join(
+                f"{count} {mode}" for mode, count in failed_modes.most_common()
+            )
+            raise ValueError(
+                f"Synthesis produced no tasks: {failed_targets} of "
+                f"{len(selected_indices)} selected target image(s) failed to load "
+                f"(observed modes: {mode_summary or 'unknown'}). "
+                "Synthesis requires RGBA cutouts with an alpha channel. Use "
+                "mask-mode segmentation output (segment without '-bbox', e.g. "
+                "--segmentation-method sam3|otsu|grabcut) or another RGBA source; "
+                "bbox-mode crop output and raw photos are RGB."
+            )
+
+        def _consume(result) -> None:
+            nonlocal synthesis_id
+            if result[0] is None:
+                # Failed synthesis: counted by the ``failed`` total below.
+                return
+            self._finalize_result(
+                result, image_output_dir, target_dir, output_dir, synthesis_id
+            )
+            if result[4] is not None:
+                written_targets.add(str(result[4]))
+            synthesis_id += 1
+
         if threads > 1 and len(tasks) > 0:
-            if TQDM_AVAILABLE and not disable_tqdm:
-                with multiprocessing.Pool(processes=threads) as pool:
-                    for result in tqdm(
+            with multiprocessing.Pool(processes=threads) as pool:
+                if TQDM_AVAILABLE and not disable_tqdm:
+                    results = tqdm(
                         pool.imap(self._synthesize_single_wrapper, tasks),
                         total=len(tasks),
                         desc="Synthesizing",
-                    ):
-                        if result[0] is None:
-                            if result[1] is None:
-                                skipped_images += 1
-                            continue
-                        if result[1]:
-                            output_path = (
-                                image_output_dir / f"{result[1]}.{self.output_format}"
-                            )
-                        else:
-                            output_path = (
-                                image_output_dir
-                                / f"synth_{synthesis_id:06d}.{self.output_format}"
-                            )
-                        self._save_image(result[0], output_path)
-                        if result[1] is not None:
-                            self._save_annotation_for_image(
-                                output_filename=result[1],
-                                result=result[0],
-                                scale_ratio=result[2],
-                                rotation_angle=result[3],
-                                position_x=result[6] if len(result) > 6 else None,
-                                position_y=result[7] if len(result) > 7 else None,
-                                output_dir=output_dir,
-                                target_rgba=result[8] if len(result) > 8 else None,
-                            )
-                        synthesis_id += 1
-            else:
-                with multiprocessing.Pool(processes=threads) as pool:
-                    results = pool.map(self._synthesize_single_wrapper, tasks)
+                    )
+                else:
+                    results = pool.imap(self._synthesize_single_wrapper, tasks)
                 for result in results:
-                    if result[0] is None:
-                        if result[1] is None:
-                            skipped_images += 1
-                        continue
-                    if result[1]:
-                        output_path = (
-                            image_output_dir / f"{result[1]}.{self.output_format}"
-                        )
-                    else:
-                        output_path = (
-                            image_output_dir
-                            / f"synth_{synthesis_id:06d}.{self.output_format}"
-                        )
-                    self._save_image(result[0], output_path)
-                    if result[1] is not None:
-                        self._save_annotation_for_image(
-                            output_filename=result[1],
-                            result=result[0],
-                            scale_ratio=result[2],
-                            rotation_angle=result[3],
-                            position_x=result[6] if len(result) > 6 else None,
-                            position_y=result[7] if len(result) > 7 else None,
-                            output_dir=output_dir,
-                            target_rgba=result[8] if len(result) > 8 else None,
-                        )
-                    synthesis_id += 1
+                    _consume(result)
         else:
+            iterator = tasks
             if TQDM_AVAILABLE and not disable_tqdm:
-                for task in tqdm(tasks, desc="Synthesizing"):
-                    result = self.synthesize_single(
-                        task[0], task[1], task[2], task[3], task[4], task[5]
-                    )
-                    if result[0] is None:
-                        if result[1] is None:
-                            skipped_images += 1
-                        continue
-                    if result[1]:
-                        output_path = (
-                            image_output_dir / f"{result[1]}.{self.output_format}"
-                        )
-                    else:
-                        output_path = (
-                            image_output_dir
-                            / f"synth_{synthesis_id:06d}.{self.output_format}"
-                        )
-                    self._save_image(result[0], output_path)
-                    if result[1] is not None:
-                        self._save_annotation_for_image(
-                            output_filename=result[1],
-                            result=result[0],
-                            scale_ratio=task[2],
-                            rotation_angle=result[3],
-                            position_x=result[6] if len(result) > 6 else None,
-                            position_y=result[7] if len(result) > 7 else None,
-                            output_dir=output_dir,
-                            target_rgba=result[8] if len(result) > 8 else None,
-                        )
-                    synthesis_id += 1
-            else:
-                for task in tasks:
-                    result = self.synthesize_single(
-                        task[0], task[1], task[2], task[3], task[4], task[5]
-                    )
-                    if result[0] is None:
-                        if result[1] is None:
-                            skipped_images += 1
-                        continue
-                    if result[1]:
-                        output_path = (
-                            image_output_dir / f"{result[1]}.{self.output_format}"
-                        )
-                    else:
-                        output_path = (
-                            image_output_dir
-                            / f"synth_{synthesis_id:06d}.{self.output_format}"
-                        )
-                    self._save_image(result[0], output_path)
-                    if result[1] is not None:
-                        self._save_annotation_for_image(
-                            output_filename=result[1],
-                            result=result[0],
-                            scale_ratio=task[2],
-                            rotation_angle=result[3],
-                            position_x=result[6] if len(result) > 6 else None,
-                            position_y=result[7] if len(result) > 7 else None,
-                            output_dir=output_dir,
-                            target_rgba=result[8] if len(result) > 8 else None,
-                        )
-                    synthesis_id += 1
+                iterator = tqdm(tasks, desc="Synthesizing")
+            for task in iterator:
+                result = self.synthesize_single(
+                    task[0],
+                    task[1],
+                    task[2],
+                    task[3],
+                    task[4],
+                    task[5],
+                    rotation_angle=task[6],
+                    np_seed=task[7],
+                    target_stem=task[8],
+                )
+                _consume(result)
+
+        # Remove leftover copies only for targets that produced a new result.
+        for target_key in written_targets:
+            for path, rel_parent, stem, index in pending_stale_cleanup.pop(
+                target_key, []
+            ):
+                if path.exists():
+                    path.unlink()
+                self._remove_synthesis_annotation(output_dir, rel_parent, stem, index)
+                stale_coco_file_names.add(f"{stem}_{index:02d}.{self.output_format}")
 
         # COCO: flush accumulated detections via annotation_writer once
         if self.annotation_format == "coco" and self._ann_image_paths:
-            from src.common.annotation_writer import write_annotations
+            from src.common.annotation_writer import (
+                merge_coco_json,
+                write_annotations,
+            )
 
             write_annotations(
                 image_paths=self._ann_image_paths,
@@ -1230,15 +1429,26 @@ class SynthesisProcessor:
                 fmt="coco",
                 coco_bbox_format=self.coco_bbox_format,
             )
+            # Merge after the bbox rewrite; write_annotations() recorded this
+            # run's convention, and a resume with a different one is rejected
+            # above before any synthesis is created.
+            if prior_coco:
+                if stale_coco_file_names:
+                    from src.common.annotation_writer import drop_coco_images
+
+                    prior_coco = drop_coco_images(prior_coco, stale_coco_file_names)
+                merge_coco_json(prior_coco, output_dir / "annotations.coco.json")
             logger.info(
                 f"Saved COCO annotations to {output_dir / 'annotations.coco.json'}"
             )
             self._ann_image_paths = []
             self._ann_detections = {}
 
+        created_tasks = len(tasks)
         return {
             "processed": synthesis_id,
-            "failed": total_syntheses - synthesis_id - skipped_images,
+            "failed": created_tasks - synthesis_id,
+            "uncreated": total_syntheses - skipped_syntheses - created_tasks,
             "output_files": synthesis_id,
-            "skipped": skipped_images,
+            "skipped": skipped_syntheses,
         }

@@ -1,8 +1,8 @@
 # entomokit 重构设计文档
 
-**日期**: 2026-03-24  
-**最后更新**: 2026-09-22（0.7.0：全局目录输入/输出策略、clean 默认递归与 `--pad-color`、synthesize 计数语义与 `--seed`、classify train `--seed`、日志版本/提交头）
-**状态**: 已确认，待实现  
+**日期**: 2026-03-24\
+**最后更新**: 2026-10-01（文档约定：命令参考迁至 `docs/commands/`、README 边界、help 链接与长期文档规则）\
+**状态**: 已确认；重构已在 0.7.0 实现。本文档保留仍然有效的架构决策与跨模块约束，历史决策不再重复；当前用户参数与行为以 `docs/commands/` 参考为准。
 
 ---
 
@@ -20,65 +20,51 @@
 
 ## 2. 命令树
 
-```
+```text
 entomokit
-├── segment          # 昆虫图像分割（SAM3/Otsu/GrabCut）
 ├── extract-frames   # 视频帧提取
-├── clean            # 图像清洗与去重
-├── split-csv        # CSV 数据集分割（原 split_dataset.py）
+├── segment          # 昆虫图像分割（SAM3/Otsu/GrabCut）
+├── measure          # 形态学测量
 ├── synthesize       # 图像合成
-└── classify         # AutoGluon 图片分类组
-    ├── train        # 训练模型
-    ├── predict      # 推理预测（支持 AutoGluon / ONNX）
-    ├── evaluate     # 分类性能评估（支持 AutoGluon / ONNX）
-    ├── embed        # 嵌入提取 + 嵌入空间质量指标 + UMAP 可视化
-    ├── cam          # GradCAM 系列热力图（仅 PyTorch）
-    └── export-onnx  # 模型导出为 ONNX
+├── clean            # 图像清洗与去重
+├── augment          # 图像增强
+├── split-csv        # CSV 数据集分割（原 split_dataset.py）
+├── classify         # AutoGluon 图片分类组
+│   ├── train        # 训练模型
+│   ├── predict      # 推理预测（支持 AutoGluon / ONNX）
+│   ├── evaluate     # 分类性能评估（支持 AutoGluon / ONNX）
+│   ├── embed        # 嵌入提取 + 嵌入空间质量指标 + UMAP 可视化
+│   ├── cam          # GradCAM 系列热力图（仅 PyTorch）
+│   └── export-onnx  # 模型导出为 ONNX
+├── doctor           # 环境与依赖诊断
+├── update           # 检查并可选安装新版本
+└── completion       # shell 补全脚本（子命令：bash/zsh/fish）
 ```
 
 ---
 
 ## 3. 目录结构
 
-```
-entomokit/
-├── entomokit/                   # CLI 入口包（新增）
-│   ├── __init__.py
-│   ├── main.py                  # 顶层 dispatcher
-│   ├── segment.py               # CLI 参数解析 → 调用 src/segmentation/
-│   ├── extract_frames.py
-│   ├── clean.py
-│   ├── split_csv.py             # 原 split_dataset.py 改名
-│   ├── synthesize.py
-│   └── classify/
-│       ├── __init__.py          # classify 组 dispatcher
-│       ├── train.py
-│       ├── predict.py
-│       ├── evaluate.py
-│       ├── embed.py
-│       ├── cam.py
-│       └── export_onnx.py
-├── src/                         # 业务逻辑包（现有结构保持不变）
-│   ├── common/                  # 共享工具（logging, validators, cli）
-│   ├── segmentation/
-│   ├── framing/
-│   ├── cleaning/
-│   ├── splitting/
-│   ├── synthesis/
-│   └── classification/          # 新增：classify 业务逻辑
-│       ├── __init__.py
-│       ├── trainer.py           # AutoGluon 训练逻辑
-│       ├── predictor.py         # 推理（AutoGluon + ONNX）
-│       ├── evaluator.py         # 评估（AutoGluon + ONNX）
-│       ├── embedder.py          # 嵌入提取 + 质量指标 + UMAP
-│       ├── cam.py               # GradCAM 热力图（仅 PyTorch）
-│       └── exporter.py          # ONNX 导出
-├── scripts/                     # 保留，过渡期不删除，不再作为主入口
-├── add_functions/               # 保留原始脚本，作为参考，不再直接使用
-├── tests/
-├── data/
-├── setup.py
-└── requirements.txt
+```text
+entomokit/                       # CLI 入口包：只做参数解析与分发
+├── main.py                      # 顶层 dispatcher
+├── help_style.py                # 共享 help 格式化 + DOCS_BASE_URL/DOC_LINKS
+├── cli_schema.py                # 运行时参数 schema（skill 与文档测试共用）
+├── param_guard.py / execution_policy.py / workflow_gate.py   # 参数与执行门禁
+├── <command>.py                 # 每个顶层命令一个注册模块
+└── classify/                    # classify 组注册模块
+
+src/                             # 领域逻辑：不含 argparse
+├── common/                      # 共享工具（cli、logging、resume、annotation_writer、validators）
+├── segmentation/                # 分割处理包（processor）
+├── segmentation.py              # 同名的模块入口；两者并存，职责不同
+├── framing/ cleaning/ augment/ splitting/ measurement/ synthesis/
+├── classification/              # AutoMM / ONNX / 嵌入 / CAM / 导出
+├── sam3/ lama/                  # 模型实现
+└── doctor/                      # 环境诊断
+
+tests/  data/  docs/  skills/    # 测试、示例数据、文档、AI skill
+setup.py  requirements.txt
 ```
 
 ### 设计原则
@@ -86,7 +72,7 @@ entomokit/
 - `entomokit/` 中的模块**只负责 CLI 参数解析和调用分发**，不含业务逻辑
 - `src/` 中的模块**只含业务逻辑**，不含 argparse
 - `src/common/` 被所有命令共享，新功能同样复用
-- `scripts/` 旧目录保留但不再是主入口（过渡期后可移除）
+- 命令的当前用户参数与行为以 `docs/commands/` 参考为准，本文档不复制参数表（见 §11）
 
 ---
 
@@ -154,7 +140,9 @@ def register(subparsers):
 
 ```text
 面向目录的命令默认递归扫描。
-普通文件输出镜像每个输入文件相对于输入根目录的路径。
+普通文件输出镜像每个输入文件相对于输入根目录的目录结构，但部分命令会重写文件名
+（clean 规范化词干、保证目录内唯一并按 --out-image-format 改扩展名；augment 追加 _augN，
+按 --multiply 的位数补零）。
 segment 是例外：它不镜像输入目录，而是把所有图像平铺到 images/ 下，并写到各自的
 注释目录，同时把输入相对路径编码为唯一的扁平样本 ID。完整的标准数据集布局
 （例如 Pascal VOC 的 JPEGImages/）由后续转换/划分步骤生成。
@@ -176,7 +164,7 @@ clean --pad-color none|median|black|white 默认 none。
   `ImageSets/Main/default.txt`；`--resume` 检查该映射产物。
 - `synthesize`：目标与背景目录递归扫描，输出按目标相对路径镜像，背景采样
   有放回。
-- `clean`：移除 `--recursive` / `--flatten`，始终递归并镜像；新增
+- `clean`：移除 `--recursive` / `--flatten`，始终递归、镜像父目录并重写文件名；新增
   `--pad-color`（`none`/`median`/`black`/`white`，默认 `none`）。
 
 ### 5.1 顶层独立命令
@@ -191,33 +179,16 @@ clean --pad-color none|median|black|white 默认 none。
 | `entomokit split-csv`       | `scripts/split_dataset.py` | 入口改变 + 命令改名 + 新增 val/copy-images |
 | `entomokit synthesize`      | `scripts/synthesize.py`  | 入口改变 + 注释输出格式对齐 detcli |
 
-### `entomokit segment` — 注释格式变更
+当前每个命令的用户参数、输出契约与注意事项以 [命令参考](../../../docs/commands/) 为准（例如 [segment](../../../docs/commands/segment.md)、[clean](../../../docs/commands/clean.md)）；下面只保留跨命令的架构结论，不再重复参数表。
 
-`segment` 和 `synthesize` 的注释文件命名与目录约定需与 detcli 兼容（使用 `supervision` 库）。
-**两者都把图像写在 `images/` 下**（`segment` 使用编码后的扁平样本 ID，`synthesize` 按目标
-相对路径镜像），注释写到各自的注释目录。完整的标准数据集布局（例如 Pascal VOC 的
-`JPEGImages/`）由后续转换/划分步骤（`split-csv` 或
-`annotation_writer.write_annotations`）生成，并不是这两个命令直接产出的中间产物。
+### `entomokit segment` / `entomokit synthesize` — 注释输出约定
 
-| 格式     | 图像目录  | 注释目录/文件 | 说明 |
-| -------- | --------- | ------------- | ---- |
-| **COCO** | `images/` | `annotations.coco.json`（unified）或 `annotations/*.json`（separate） | bbox 格式由 `--coco-bbox-format` 控制，默认 `xywh`；支持 `xywh`/`xyxy` |
-| **YOLO** | `images/` | `labels/*.txt` + `data.yaml`（含 `nc` 和带引号的 `names` 列表） | 与 detcli 布局兼容 |
-| **VOC**  | `images/` | `Annotations/*.xml`；`segment` 还写 `ImageSets/Main/default.txt`，mask 模式另写 `SegmentationClass/*.png` | 中间产物；标准 `JPEGImages/` 布局在后续步骤生成 |
+`segment` 与 `synthesize` 都把图像写在 `images/` 下（`segment` 用编码后的扁平样本 ID，`synthesize` 按目标相对路径镜像）。注释写到各格式目录，但两个命令的 COCO 能力不同：`segment` 按 `--coco-output-mode` 写 `annotations.coco.json`（unified）或 `annotations/*.json`（separate），而 `synthesize` 接受该参数但当前只写 unified 的 `annotations.coco.json`（separate 尚未实现）。YOLO 都是 `labels/*.txt` + 输出根目录的 `data.yaml`，VOC 都是 `Annotations/*.xml`（`segment` 另写 `ImageSets/Main/default.txt`，mask 模式写 `SegmentationClass/*.png`）。标准数据集布局（例如 VOC `JPEGImages/`）由后续转换/划分步骤生成。
 
-`segment` 新增参数：
-- `--annotation-format`：`coco`/`yolo`/`voc`，选择注释输出格式（原脚本已有该参数，对齐格式规范）
-- `--coco-bbox-format`：`xywh`/`xyxy`，COCO 格式时 bbox 的坐标约定，默认 `xywh`
-
+标注语义（bbox 与 mask、`area`、polygon）与格式级行为由专项设计拥有：[Segment 注释语义设计](2026-04-13-segment-annotation-semantics-design.md)；当前参数见 [segment 参考](../../../docs/commands/segment.md) 与 [synthesize 参考](../../../docs/commands/synthesize.md)。
 ### `entomokit clean` — 默认递归与填充
 
-`clean` 始终递归扫描 `--input-dir` 并把输出镜像到
-`out-dir/cleaned_images/<输入相对路径>`。不再提供 `--recursive` 或 `--flatten`。
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--pad-color` | str | `none` | `none`/`median`/`black`/`white`；非 `none` 时先缩放再居中填充为正方形，`median` 取边界像素 RGB 中位数 |
-
+`clean` 始终递归扫描 `--input-dir` 并把输出写到 `out-dir/cleaned_images/` 下；不再提供 `--recursive` 或 `--flatten`。镜像的是输入文件的**父目录**，文件名会被重写（词干规范化、同目录内大小写不敏感的唯一后缀、扩展名跟 `--out-image-format`），因此不能按原名关联标签。`--pad-color` 等当前参数见 [clean 参考](../../../docs/commands/clean.md)。
 ### `entomokit segment` — 递归输入与样本 ID 编码
 
 `segment` 递归扫描输入，把所有图像平铺到 `images/` 下（不镜像输入目录），把每个输入
@@ -230,227 +201,51 @@ clean --pad-color none|median|black|white 默认 none。
 - 目录路径：扫描目录下所有支持的视频文件（原有行为）
 - 单个视频文件路径：直接处理该文件，无需创建临时目录
 
-### `entomokit split-csv` — 新增参数
+### `entomokit split-csv` — 划分输出
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--val-ratio` | float | 0 | `ratio` 模式下验证集占 known 数据比例，0 表示不生成 val |
-| `--val-count` | int | 0 | `count` 模式下验证集样本数，0 表示不生成 val |
-| `--images-dir` | str | 可选 | 图像来源目录（`--copy-images` 时必填） |
-| `--copy-images` | flag | False | 按 split 将图像复制到对应子目录 |
-
-**输出结构**（含所有可选输出）：
-```
-out_dir/
-├── train.csv
-├── val.csv              # 仅 --val-ratio/--val-count > 0 时
-├── test.known.csv
-├── test.unknown.csv     # 仅 unknown > 0 时
-├── images/              # 仅 --copy-images 时
-│   ├── train/
-│   ├── val/
-│   ├── test_known/
-│   └── test_unknown/
-└── class_count/
-    ├── class.count
-    ├── class.train.count
-    ├── class.val.count
-    ├── class.test.known.count
-    └── class.test.unknown.count
-```
-
+`split-csv` 以 `--raw-image-csv` 为准，按 `ratio` 或 `count` 模式生成 `train.csv`、可选的 `val.csv`、`test.known.csv` 与可选的 `test.unknown.csv`，并写 `class_count/` 统计；`--copy-images` 时按划分把图像复制到 `images/{train,val,test_known,test_unknown}/`。完整参数与输出见 [split-csv 参考](../../../docs/commands/split-csv.md)。
 ### 5.2 `classify train`
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--train-csv` | str | 必填 | CSV(image,label) |
-| `--images-dir` | str | 必填 | 训练图像目录 |
-| `--base-model` | str | `convnextv2_femto` | timm backbone 名称 |
-| `--out-dir` | str | 必填 | 输出目录 |
-| `--augment` | str | `medium` | 增强预设：`none`/`light`/`medium`/`heavy`，或 JSON 字符串自定义 |
-| `--max-epochs` | int | 50 | 最大训练轮数 |
-| `--time-limit` | float | 1.0 | 训练时限（小时） |
-| `--focal-loss` | flag | False | 启用 focal loss |
-| `--focal-loss-gamma` | float | 1.0 | focal loss gamma 值 |
-| `--device` | str | `auto` | `auto`/`cpu`/`cuda`/`mps` |
-| `--batch-size` | int | 32 | 训练 batch size |
-| `--num-workers` | int | 4 | DataLoader worker 数 |
-| `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动）；`device=cpu` 时设置 `torch.set_num_threads()` |
-| `--seed` | int | 0 | 传给 AutoMM `fit(seed=...)` 的随机种子，并记录到运行日志 |
+当前契约：AutoGluon MultiModalPredictor + timm 骨干是唯一训练路径；训练集来自 `--train-csv`，验证由 AutoGluon 内部完成（因此 `split-csv` 的 `--val-ratio`/`--val-count` 保持 0）；产物写入 `out-dir/AutogluonModels/<base-model>`，供 predict/evaluate/embed/cam/export-onnx 复用；`--resume` 需在同一 `--base-model` 下延长轮数上限。
 
-**增强预设映射**（基于 AutoGluon `model.timm_image.train_transforms`）：
-
-| 预设 | transforms |
-|------|------------|
-| `none` | `["resize_shorter_side", "center_crop"]` |
-| `light` | `["resize_shorter_side", "center_crop", "random_horizontal_flip"]` |
-| `medium` | `["resize_shorter_side", "center_crop", "random_horizontal_flip", "color_jitter", "trivial_augment"]` |
-| `heavy` | `["random_resize_crop", "random_horizontal_flip", "random_vertical_flip", "color_jitter", "trivial_augment", "randaug"]` |
-
-自定义方式：传入 JSON 数组字符串，如 `'["random_resize_crop","color_jitter"]'`
-
-传入无效预设名称或非法 JSON 时，立即报错退出（不静默回退到 `medium`）。JSON 数组中包含未知 transform 名称时，同样在解析阶段报错退出，提示可用名称列表。
-
-**输出结构**：
-```
-out_dir/
-├── AutogluonModels/
-│   └── {base_model}/          # AutoGluon predictor 目录
-├── train.processed.csv
-└── logs/
-    └── log.txt
-```
-
+当前参数、默认值与增强预设语义见 [classify train 参考](../../../docs/commands/classify-train.md)；原始实现任务见 [Phase 3 plan](../plans/2026-03-24-phase3-classify.md)（历史）。
 ### 5.3 `classify predict`
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--input-csv` | str | 与 `--images-dir` 二选一 | CSV(image) 或 CSV(image,label) |
-| `--images-dir` | str | 与 `--input-csv` 二选一 | 直接扫描目录中的图像 |
-| `--model-dir` | str | 与 `--onnx-model` 二选一 | AutoGluon predictor 目录 |
-| `--onnx-model` | str | 与 `--model-dir` 二选一 | ONNX 模型路径 |
-| `--out-dir` | str | 必填 | 输出目录 |
-| `--batch-size` | int | 32 | 推理 batch size |
-| `--num-workers` | int | 4 | DataLoader worker 数 |
-| `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动） |
-| `--device` | str | `auto` | `auto`/`cpu`/`cuda`/`mps` |
+当前契约：`--input-csv` 与 `--images-dir` 至少提供其一；`--images-dir` 递归发现并按相对路径记录（嵌套同名图像不冲突），显式 CSV 路径按原样使用；`--model-dir` 与 `--onnx-model` 二选一，ONNX 需要 `onnxruntime`，并在存在 `label_classes.json` 时输出类别名。
 
-**输出**：
-```
-out_dir/
-└── predictions/
-    └── predictions.csv        # 列：image, stem, [label（若输入含 label 列则保留）], prediction, proba_* 
-```
-
+当前参数见 [classify predict 参考](../../../docs/commands/classify-predict.md)。
 ### 5.4 `classify evaluate`
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--test-csv` | str | 必填 | CSV(image,label) |
-| `--images-dir` | str | 必填 | 图像目录 |
-| `--model-dir` | str | 与 `--onnx-model` 二选一 | AutoGluon predictor 目录 |
-| `--onnx-model` | str | 与 `--model-dir` 二选一 | ONNX 模型路径 |
-| `--out-dir` | str | 必填 | 输出目录 |
-| `--batch-size` | int | 32 | 推理 batch size |
-| `--num-workers` | int | 4 | DataLoader worker 数 |
-| `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动） |
-| `--device` | str | `auto` | `auto`/`cpu`/`cuda`/`mps` |
+当前契约：需要一个带标签的 `--test-csv`；输出 `evaluations.csv`（总体指标）、原始与行归一化混淆矩阵、`per_class_metrics.csv`，以及类别数可读时的 `confusion_matrix.pdf`；`--model-dir` 与 `--onnx-model` 二选一。
 
-**评估指标**：accuracy, precision_macro/micro, recall_macro/micro, f1_macro/micro, mcc, roc_auc_ovo
-
-**输出**：
-```
-out_dir/
-└── evaluations.csv
-```
-
+参数与指标清单见 [classify evaluate 参考](../../../docs/commands/classify-evaluate.md)。
 ### 5.5 `classify embed`
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--images-dir` | str | 必填 | 图像目录 |
-| `--out-dir` | str | 必填 | 输出目录 |
-| `--base-model` | str | `convnextv2_femto` | timm backbone（无 `--model-dir`/`--onnx-model` 时使用） |
-| `--model-dir` | str | 可选 | AutoGluon predictor，使用 fine-tuned backbone 提取 |
-| `--label-csv` | str | 可选 | CSV(image,label)，提供后计算有监督指标 + UMAP 着色 |
-| `--visualize` | flag | False | 生成 UMAP 可视化图；若未提供 `--label-csv` 则报错退出 |
-| `--umap-n-neighbors` | int | 15 | UMAP n_neighbors |
-| `--umap-min-dist` | float | 0.1 | UMAP min_dist |
-| `--umap-metric` | str | `euclidean` | UMAP 距离度量 |
-| `--umap-seed` | int | 42 | UMAP 随机种子 |
-| `--batch-size` | int | 32 | 提取 batch size |
-| `--num-workers` | int | 4 | DataLoader worker 数 |
-| `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动） |
-| `--device` | str | `auto` | `auto`/`cpu`/`cuda`/`mps` |
-| `--metrics-sample-size` | int | 10000 | 计算指标时最大样本数（≤0 禁用采样） |
+当前契约：`--model-dir` 复用微调骨干，否则使用 `--base-model` 的预训练 timm 骨干；`--label-csv` 的 `image` 必须唯一且与图像文件名有交集；质量指标（NMI/ARI/Recall@K/kNN/线性探针含 balanced/mAP@R/Purity/Silhouette）使用固定随机种子 42 的交叉验证，不可计算时写 `N/A` 而非 0；`--metrics-sample-size` 限制全部指标的样本量，是主要的运行时间与内存开关；`0.6.2` 起指标不可与更早运行数值比较，`0.7.0` 未改动该算法。
 
-**嵌入质量指标**（有 `--label-csv` 时计算）：NMI, ARI, Recall@1/5/10, kNN_Acc_k1/5/20, Linear_Probing_Acc, mAP, Purity, Silhouette_Score
-
-*该列表早于 0.6.2 评估器修正：字段名仍然有效，但其记录的数值与 0.6.2 不可比（详见 `docs/superpowers/plans/2026-09-22-classify-embed-metrics-corrections.md`）。*
-
-**输出**：
-```
-out_dir/
-├── embeddings.csv
-├── umap.pdf                   # 仅 --visualize 时生成
-└── logs/
-    ├── metrics.csv
-    └── log.txt
-```
-
+参数与指标定义见 [classify embed 参考](../../../docs/commands/classify-embed.md)。
 ### 5.6 `classify cam`
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--label-csv` | str | 可选 | CSV(image,label)；省略时递归处理 `--images-dir` 中的所有支持图像 |
-| `--images-dir` | str | 必填 | 图像目录 |
-| `--out-dir` | str | 必填 | 输出目录 |
-| `--model-dir` | str | 与 `--base-model` 二选一 | AutoGluon predictor 目录 |
-| `--base-model` | str | 与 `--model-dir` 二选一 | timm backbone 名称 |
-| `--checkpoint-path` | str | 可选 | 自定义 .pth 权重（配合 `--base-model` 使用） |
-| `--num-classes` | int | 可选 | 覆盖分类数（timm backbone 时） |
-| `--no-pretrained` | flag | False | 不加载 timm 预训练权重 |
-| `--cam-method` | str | `gradcam` | `gradcam`/`gradcampp`/`layercam`/`scorecam`/`eigencam`/`ablationcam` |
-| `--arch` | str | 自动推断 | `cnn`/`vit`；Swin 归入 `vit` |
-| `--target-layer-name` | str | 可选 | 指定 CAM 目标层（点分隔路径） |
-| `--image-weight` | float | 0.5 | 原图与 CAM 叠加权重（0~1） |
-| `--fig-format` | str | `png` | `png`/`jpg`/`pdf` |
-| `--save-npy` | str | `none` | `none`（默认，不保存）/`raw`（未归一化正值 CAM，保留幅值）/`normalized`（逐图 min-max，落在 `[0, 1]`）；值为必填 |
-| `--max-images` | int | 可选 | 限制处理图像数量 |
-| `--cam-batch-size` | int | 32 | CAM 内部 batch size（ScoreCAM/EigenCAM） |
-| `--eval-transform` | str | `center-crop` | `center-crop`/`whole-specimen-pad`；后者保持宽高比并覆盖整个标本 |
-| `--num-threads` | int | 0 | CPU 计算线程数（0=框架自动） |
-| `--device` | str | `auto` | `auto`/`cpu`/`cuda`/`mps` |
+当前契约：CAM 依赖 PyTorch hook，因此不支持 ONNX；架构自动检测（Swin 按 ViT 风格取末 stage block，ConvNeXt 取末 stage block 而非 `mlp.fc2`）；`--save-npy raw` 保留未归一化幅值，只在同一模型、目标层与预处理配置内可比，`normalized` 为该图 min-max；`--eval-transform center-crop|whole-specimen-pad` 决定热力图视野。
 
-> **注意**：`cam` 命令仅支持 PyTorch 原生模型（AutoGluon predictor 或 timm backbone），**不支持 ONNX**。GradCAM 依赖 PyTorch hook 和反向传播机制，ONNX runtime 不具备此能力。
+当前参数见 [classify cam 参考](../../../docs/commands/classify-cam.md)。
 
-**模型与预处理契约**：
+**模型与预处理不变量**（无独立设计 owner，保留在本设计）：
 
-- 使用 `--model-dir` 时，CAM 包装 AutoGluon 保存的 `backbone -> classification head`，解释最终训练类别的 logits；`pred_class` 写入 predictor 的真实类别标签，而非 backbone 特征维度索引。
-- CAM 直接复用 predictor 保存的 `ImageProcessor.val_processor`。因此模型保存的 `image_size` 是唯一输入尺寸来源：224、384 或自定义尺寸都会自动适配；不存在已构建 processor 时，才由保存的 `val_transforms` 重建。
-- `center-crop`（默认）保留该验证预处理，并将热图逆映射到完整原图。模型视野外的像素会被压暗且去色，不经过 CAM colormap；热图绝不将裁剪区域拉伸到整个画面。
-- `whole-specimen-pad` 使用图像四边像素的逐通道中位色补成方形，再缩放到保存的输入尺寸。其逆映射覆盖完整原图，适合需要检查整只昆虫的场景。
-- `--base-model` 没有保存的 AutoGluon processor 时，使用 timm 数据配置。其 center-crop 热图映射保留实际的 resize 尺寸和 crop 尺寸（例如 `Resize(256) -> CenterCrop(224)`）。
-- AutoGluon ViT 根据包装后的 backbone 推断架构，并启用 ViT token reshape；标准 ViT 默认目标层为 `blocks[-1].norm1`，去除 CLS token 后转换为 CAM 所需的 `(B, C, H, W)`。
-- Swin 属于 Transformer/ViT 类架构：默认目标层为 `layers[-1].blocks[-1].norm1`，其 `(B, H, W, C)` 或 `(B, N, C)` 激活被转换为 CAM 所需的 `(B, C, H, W)`；`ablationcam` 使用对应的 channel-last 适配器。
-- ConvNeXt 默认目标层为最后 stage 的最后一个完整 block（例如 `stages.3.blocks.1`），而不是最后一个 pointwise `mlp.fc2`；后者可能使 GradCAM 的正贡献经过 ReLU 后退化为空图。没有这些已知结构的 CNN 仍回退到最后一个 `Conv2d`，也可通过 `--target-layer-name` 显式选择目标层。
-- entomokit 跳过 pytorch-grad-cam 内部两次 `scale_cam_image()`，保留 ReLU 与 resize 到模型输入尺寸，因此保存的数组保留幅值；overlay 图始终使用独立的逐图 min-max 副本。
-- `min-max` 具有仿射不变性，`cv2.INTER_LINEAR` 缩放是仿射的，因此 `--save-npy normalized` 与旧版本的模型空间 normalized CAM mask 在测量范围内保持 float32 精度内的一致性（当前 fixture 上六种方法最大偏差 `1.8e-7`~`2.4e-7`），但不是逐位相同，也不是跨模型/跨输入的普遍保证。
-- overlay 图继续使用 normalized display mask，显示语义保持不变；但最终 PNG 已经过 `np.uint8` 量化，其像素差异不是兼容性契约。当前 fixture 的端到端测量显示五种方法像素一致，`scorecam` 有 44 个像素、最大 2 LSB 的差异；该结果仅作为测试基线，不作为普遍保证。
-- `raw` 幅值仅在同一模型、同一目标层、同一预处理配置内可比，不适用于跨 backbone/跨层/跨 CAM 方法比较。
-- `eigencam` 的数值来自 SVD 投影，符号任意且之后仍经过 ReLU；符号翻转时可能整幅图被清零，其 `raw` 幅值不可用于响应强度统计。
+- 使用 `--model-dir` 时，CAM 包装 AutoGluon 的 `backbone -> classification head`，解释最终训练类别的 logits；`pred_class` 写入 predictor 的真实类别标签，而不是 backbone 特征维度索引。
+- CAM 复用 predictor 保存的 `ImageProcessor.val_processor`：保存的 `image_size` 是唯一输入尺寸来源（224、384 或自定义尺寸自动适配）；没有已构建 processor 时才由保存的 `val_transforms` 重建。
+- `center-crop`（默认）保留该验证预处理并把热图逆映射回完整原图：模型视野外的像素被压暗去色而不是拉伸，绝不把裁剪区域铺满整幅图。`whole-specimen-pad` 先用图像四边逐通道中位色补成方形，再缩放到保存的输入尺寸。
+- `--base-model` 且无保存 processor 时使用 timm 数据配置，热图映射保留实际的 resize 与 crop 尺寸（例如 `Resize(256) -> CenterCrop(224)`）。
+- ViT 默认目标层 `blocks[-1].norm1`（去除 CLS token）；Swin 为 `layers[-1].blocks[-1].norm1`（channel-last 适配，`ablationcam` 使用对应适配器）；ConvNeXt 为最后 stage 的最后一个完整 block（例如 `stages.3.blocks.1`）而不是 pointwise `mlp.fc2`，其余 CNN 回退到最后一个 `Conv2d`，也可用 `--target-layer-name` 显式指定。
+- 保存的数组是**模型输入空间**的 float32：`raw` 保留未归一化正值 CAM 幅值（跳过库内 `scale_cam_image()`，保留 ReLU 与 resize 到模型输入尺寸），overlay 始终使用独立的逐图 min-max 副本；`normalized` 在 float32 容差内与此前的归一化模型空间 mask 一致，但非逐位相同，也非跨模型/跨输入保证；overlay PNG 的像素差异不构成兼容性契约。
+- `raw` 幅值只在同一模型、同一目标层、同一预处理配置内可比；`eigencam` 的 raw 值来自符号任意的 SVD 投影，不可用于响应强度统计。
 
-**输出**：
-```
-out_dir/
-├── figures/
-│   └── {relative_stem}_cam.{format} # 原图与 CAM 叠加的并排图；子目录以 __ 编码，避免同名覆盖
-├── arrays/                           # 仅 --save-npy raw / normalized 时生成（默认 none 不生成）
-│   └── {relative_stem}.npy           # raw 为未归一化正值 CAM，normalized 为逐图 min-max；均为模型输入空间的 float32 数组
-└── cam_summary.csv                   # image（相对输入路径）, label, pred_class, pred_prob, figure_path, cam_array_path
-```
-
+输出目录与列定义见 [classify cam 参考](../../../docs/commands/classify-cam.md)。
 ### 5.7 `classify export-onnx`
 
-底层调用 `MultiModalPredictor.export_onnx()`，直接使用 AutoGluon 原生 ONNX 导出功能。
+当前契约：把 AutoGluon predictor 导出为 `model.onnx`，并同时写出 `label_classes.json`（`classify predict` 用它输出类别名）；`--opset` 默认 17；`--sample-image` 可选，缺省使用自动生成的临时图像做 trace。
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--model-dir` | str | 必填 | AutoGluon predictor 目录 |
-| `--out-dir` | str | 必填 | ONNX 输出目录 |
-| `--opset` | int | 17 | ONNX opset 版本（传给 `export_onnx(opset=N)`） |
-| `--input-size` | int | 224 | 模型输入尺寸（正方形，传给 `export_onnx`） |
-
-**输出**：
-```
-out_dir/
-└── model.onnx
-```
-
-> 实现说明：`MultiModalPredictor.load(model_dir).export_onnx(save_path=out_dir, opset=opset, input_size=(input_size, input_size))`
-
----
-
+当前参数见 [classify export-onnx 参考](../../../docs/commands/classify-export-onnx.md)。
 ## 6. ONNX 支持范围说明
 
 | 命令 | AutoGluon | ONNX |
@@ -466,17 +261,11 @@ out_dir/
 
 ## 7. CPU/线程控制说明
 
-除 `export-onnx` 外，classify 命令均支持 `--device`；支持批处理或 DataLoader 的命令还支持 `--num-workers`，CPU 计算或 ONNX 推理命令还支持 `--num-threads`。
+除 `export-onnx` 外，classify 命令均支持 `--device`；支持批处理或 DataLoader 的命令还支持 `--num-workers`，CPU 计算或 ONNX 推理命令还支持 `--num-threads`。`classify cam` 逐图生成 CAM，不提供 `--num-workers`，其 `--cam-batch-size` 只控制 ScoreCAM/EigenCAM 的内部批量；默认 `--num-threads=0` 由框架决定。`export-onnx` 无需并发/设备参数。
 
-| 参数 | 作用层次 | 底层实现 |
-|------|----------|----------|
-| `--num-workers` | DataLoader 图像加载并发（train/predict/evaluate/embed） | `DataLoader(num_workers=N)` |
-| `--num-threads` | PyTorch CPU 计算线程 / ONNX 推理线程 | `torch.set_num_threads(N)` / `InferenceSession(intra_op_num_threads=N)` |
-| `--device` | 计算设备选择 | `auto` 时自动检测 cuda→mps→cpu 优先级 |
+`segment` 的 CPU 并发与 SAM3 串行边界、以及线程数的选择建议由专项设计拥有：[Segment CPU Parallelism Design](2026-07-10-segment-cpu-parallelism-design.md)。本设计不再重复其参数表。
 
-`classify cam` 逐图生成 CAM，不提供 `--num-workers`；其 `--cam-batch-size` 仅控制 ScoreCAM/EigenCAM 等方法的内部批量。默认 `--num-threads=0`（由框架决定）。
-
-`export-onnx` 无需上述并发/设备参数（纯模型格式转换，无推理运算）。
+每个命令的当前并发参数见对应命令参考。
 
 ---
 
@@ -511,9 +300,8 @@ pip install -e ".[classify]"
 
 ## 9. 向后兼容说明
 
-- `scripts/` 目录中的原始脚本**暂时保留**，不立即删除，但不再是主入口
-- `add_functions/` 目录**保留作为参考**，不作为入口
-- 旧的 `setup.py` entry_points（`entomokit-segment` 等）在迁移完成后移除
+- `scripts/` 与 `add_functions/` 已随 0.7.0 移除，不再是入口（历史记录）
+- 旧的 `setup.py` entry_points（`entomokit-segment` 等）已在迁移中移除
 - 原有参数名（下划线风格如 `--input_dir`）迁移后统一改为连字符风格（`--input-dir`）；以下为主要改名对照：
 
 | 旧参数（scripts/）        | 新参数（entomokit CLI）  |
@@ -533,7 +321,20 @@ pip install -e ".[classify]"
 
 ---
 
-## 10. 未来扩展预留
+## 10. 文档约定（长期规则）
+
+文档分层与长期规则以 [文档约定设计](2026-10-01-entomokit-documentation-conventions-design.md) 为准，本节只记录要点：
+
+- 分层归属：README 负责项目入口、安装、操作命令与共享行为；`docs/commands/*.md` 负责各功能命令的完整参数与输入输出契约；本设计负责架构决策与跨模块不变量；历史迁移事实由 plans 记录。
+- 双语：每个命令参考都有同名的 `.cn.md` 中文镜像，两边章节顺序与语义一致。
+- 当前参数：以 CLI 实现与运行时 schema 为准；命令参考是散文版完整参考，本设计不复制参数表。
+- help 边界：每个 parser 的 description 末尾追加文档链接（`entomokit/help_style.py` 的 `DOCS_BASE_URL` 与 `DOC_LINKS` 唯一定义），逐项 option help 不改写。
+- reference-first：细节已有专项设计时，本设计只保留结论与链接；plan 只作历史证据，不承载当前不变量。
+- 新增命令：注册、双语参考、README 索引行、help 指针、Version Notes 与文档检查必须同批完成（详见设计 §6）。
+
+---
+
+## 11. 未来扩展预留
 
 顶层命令组的设计允许未来增加新的功能组，例如：
 

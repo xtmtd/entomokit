@@ -1,84 +1,38 @@
 # 昆虫图像数据集工具包 (EntomoKit)
+[English](README.md) | **中文**
 
-**中文** | [English](README.md)
+一个用于构建昆虫图像数据集的 Python 工具包。EntomoKit 提供统一的 `entomokit` 命令行，
+覆盖视频抽帧、图像分割、形态测量、图像合成、图像清洗、数据增强、数据集划分、AutoMM 图像
+分类与环境诊断，并附带面向 AI 助手的 `entomokit-workflow` skill。
 
-一个基于 Python 的昆虫图像数据集构建工具包。提供统一的 `entomokit` 命令行工具，支持视频抽帧、图像分割、形态学测量、图像合成、图像清洗、图像增强、数据集划分、AutoMM 图像分类以及环境诊断等功能。附带 `entomokit-workflow` skill，支持在 OpenCode、Claude Code、Codex 等 AI 助手中引导非命令行用户完成完整工作流。
+## 工作流概览
 
-## 概述
+整条流水线是可组合的，只需使用你的数据真正需要的步骤。
 
-所有功能通过单一入口访问：
+1. `extract-frames` — 把视频转为静态帧。
+2. `segment` — 从图像中分割昆虫，可选输出标注。
+3. `measure` — 可选：从分割掩码计算形态学指标。
+4. `synthesize` — 可选：把 RGBA 抠图合成到新背景上。
+5. `clean` — 缩放、填充并去重图像。
+6. `augment` — 可选：扩充小样本训练集。
+7. `split-csv` — 生成 train/val/test CSV。
+8. `classify train` → `classify predict` / `classify evaluate` / `classify embed` /
+   `classify cam` / `classify export-onnx`。
 
-```
-entomokit <command> [options]
-```
+可以从任意一步开始：例如图像已标注时直接从 `clean` 进入 `classify train`，或只用
+`segment` 提取掩码。AI 辅助运行遵循 skill 自身的引导策略，而不是这份清单。
 
-| 命令 | 描述 |
-|---------|-------------|
-| `extract-frames` | 从视频文件中提取帧 |
-| `segment` | 从图像中分割昆虫（SAM3、Otsu、GrabCut 与 bbox 裁剪模式） |
-| `measure` | 从分割掩码中计算形态学指标 |
-| `synthesize` | 将昆虫合成到背景图像上 |
-| `clean` | 清洗和去重图像 |
-| `augment` | 使用预设或自定义 albumentations 策略进行图像增强 |
-| `split-csv` | 将数据集划分为 train/val/test CSV 文件 |
-| `classify train` | 训练 AutoMM 图像分类器 |
-| `classify predict` | 运行推理（AutoMM 或 ONNX） |
-| `classify evaluate` | 评估模型性能并导出总体 + 类别级诊断结果 |
-| `classify embed` | 提取嵌入向量 + UMAP + 质量指标 |
-| `classify cam` | 生成 GradCAM 热力图 |
-| `classify export-onnx` | 导出模型为 ONNX 格式 |
-| `doctor` | 诊断环境与缺失依赖 |
-| `update` | 从 GitHub 检查更新并可选地安装最新版本 |
-
-## 功能特性
-
-- **统一命令行接口**：单一 `entomokit` 入口，无需逐脚本调用
-- **多种分割方法**：`sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox`
-- **形态学测量**：`measure` 可从掩码图计算面积、体长、体宽、周长、Feret 直径与质量告警
-- **灵活的修复策略**：OpenCV 形态学操作、基于 SAM3 或 LaMa 的孔洞填充
-- **标注输出**：COCO JSON、VOC Pascal XML、YOLO TXT
-- **视频抽帧**：多线程提取，支持时间范围设定
-- **图像清洗**：调整大小、去重（MD5/Phash）、规范化命名；始终递归扫描
-- **图像增强**：基于 albumentations 的预设/自定义增强，支持确定性随机种子
-- **数据集划分**：基于比例或数量的 train/val/test 划分，支持分层采样
-- **图像合成**：高级合成功能，支持旋转、颜色匹配、黑区规避
-- **AutoMM 分类**：训练、预测、评估、嵌入、GradCAM、ONNX 导出
-- **类别级评估诊断**：`classify evaluate` 会输出混淆矩阵、按真实类别归一化的召回矩阵、每类 precision/recall/F1，以及类数较少时的混淆矩阵 PDF
-- **环境诊断**：`doctor` 命令输出依赖状态并给出安装/升级建议
-- **嵌入质量指标**：NMI、ARI、Recall@K、交叉验证的 kNN 与线性探针准确率（含平衡准确率）、mAP@R、轮廓系数、UMAP 可视化
-- **并行分割**：Otsu/GrabCut 方法通过 `--threads` 并行处理图像；SAM3 使用单模型串行路径
-- **完整日志**：详细日志记录，支持详细模式和日志文件输出
-- **AI 助手集成**：`entomokit-workflow` skill 支持在 OpenCode、Claude Code、Codex 等工具中进行引导式对话工作流
-
-## 系统要求
+## 系统要求与安装
 
 - Python 3.9+
-- 操作系统：Linux、macOS、Windows
-
-## 安装
-
-推荐使用隔离的 Python 环境，避免与系统/全局 site-packages 发生依赖冲突。
-
-安装前请先克隆仓库并进入项目目录：
+- Linux、macOS 或 Windows
 
 ```bash
 git clone https://github.com/xtmtd/entomokit.git
 cd entomokit
 ```
 
-### 部署模式 A（推荐）：隔离环境
-
-可任选其一：
-
-**选项 1：conda**
-
-```bash
-conda create -n entomokit python=3.11 -y
-conda activate entomokit
-pip install -e .
-```
-
-**选项 2：uv + venv**
+推荐安装到隔离环境：
 
 ```bash
 uv venv .venv
@@ -86,1126 +40,196 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
-**选项 3：标准库 venv + pip**
+等价方案：`python -m venv .venv && source .venv/bin/activate`，或
+`conda create -n entomokit python=3.11 -y && conda activate entomokit`。直接装进全局环境
+虽然可行，但可能与其它项目产生依赖冲突。
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
+命令对应的附加依赖：
 
-### 基础安装
+| 附加依赖 | 作用 |
+|---|---|
+| `.[video]` | `extract-frames`（OpenCV 视频解码） |
+| `.[segmentation]` | SAM3 分割、SAM3 修复与合成标注输出 |
+| `.[measurement]` | `measure`（形态学指标、骨架计算） |
+| `.[synthesis]` | `synthesize`（多边形简化、COCO 标注） |
+| `.[cleaning]` | `clean` 的感知哈希去重 |
+| `.[augment]` | `augment`（albumentations） |
+| `.[classify]` | `classify train/predict/evaluate/embed/cam/export-onnx`（AutoMM、timm、GradCAM、UMAP、ONNX） |
+| `.[dev]` | pytest 与覆盖率 |
 
-```bash
-pip install -e .
-```
+`measure` 与 `synthesize` 还会导入 `scikit-image`，而 `measurement` 与 `synthesis`
+两个附加依赖都没有声明它；请同时安装声明了它的 `.[segmentation]`，或在这些附加依赖之外
+显式加入 `scikit-image`。
 
-### 部署模式 B（不推荐）：直接全局 pip
-
-也可以直接安装到当前 Python 环境，但可能导致与其他项目发生依赖冲突：
-
-```bash
-pip install -e .
-```
-
-### 安装分类功能支持
-
-用于分类命令（AutoMM、timm、GradCAM、UMAP）：
-
-```bash
-pip install -e ".[classify]"
-```
-
-AutoMM 官方安装参考：
-https://auto.gluon.ai/stable/install.html
-
-### 安装分割功能支持
-
-用于基于 SAM3 的分割（同时覆盖合成标注输出）：
-
-```bash
-pip install -e ".[segmentation]"
-```
-
-### 安装合成功能支持
-
-用于 `entomokit synthesize`（多边形简化、COCO 标注输出）：
-
-```bash
-pip install -e ".[synthesis]"
-```
-
-### 安装测量功能支持
-
-用于 `entomokit measure`（形态学指标、骨架计算）：
-
-```bash
-pip install -e ".[measurement]"
-```
-
-### 安装视频处理支持
-
-用于视频抽帧：
-
-```bash
-pip install -e ".[video]"
-```
-
-### 安装图像清洗支持
-
-用于感知哈希去重：
-
-```bash
-pip install -e ".[cleaning]"
-```
-
-### 安装图像增强支持
-
-用于 `entomokit augment`：
-
-```bash
-uv pip install --only-binary :all: stringzilla
-pip install -e ".[augment]"
-```
-
-### 开发环境安装
+可一次安装多项，例如完整的开发集合：
 
 ```bash
 uv pip install --only-binary :all: stringzilla
 pip install -e ".[dev,classify,segmentation,synthesis,measurement,video,cleaning,augment]"
 ```
 
-## Shell Completion
+在只提供二进制 wheel 的平台上，上面的 `stringzilla` 一行必须在安装 `.[augment]` 之前执行。
+AutoMM 的官方安装说明见 https://auto.gluon.ai/stable/install.html。
 
-`entomokit` 通过 `completion` 子命令提供静态 shell 补全脚本。
+## 快速开始
 
-输出脚本到标准输出：
-
-```bash
-entomokit completion bash
-entomokit completion zsh
-entomokit completion fish
-```
-
-安装到对应 shell 的默认用户级路径：
+下面的例子需要 `video` 附加依赖，并把帧写入 `./frames`：
 
 ```bash
-entomokit completion bash --install
-entomokit completion zsh --install
-entomokit completion fish --install
+uv pip install -e ".[video]"
+entomokit extract-frames --input-dir ./videos --out-dir ./frames
 ```
 
-说明：
-
-- `bash` 安装到 `~/.local/share/bash-completion/completions/entomokit`
-- `zsh` 安装到 `~/.zfunc/_entomokit`
-- `fish` 安装到 `~/.config/fish/completions/entomokit.fish`
-- 对于 `zsh`，请确保 shell 配置中包含 `fpath=(~/.zfunc $fpath)`，并使用 `autoload -Uz compinit && compinit` 初始化补全系统
-
-## 项目结构
-
-```
-.
-├── entomokit/              # 统一命令行包
-│   ├── main.py             # 入口点调度器
-│   ├── extract_frames.py   # entomokit extract-frames
-│   ├── segment.py          # entomokit segment
-│   ├── measure.py          # entomokit measure
-│   ├── synthesize.py       # entomokit synthesize
-│   ├── clean.py            # entomokit clean
-│   ├── augment.py          # entomokit augment
-│   ├── split_csv.py        # entomokit split-csv
-│   ├── doctor.py           # entomokit doctor
-│   ├── update.py           # entomokit update
-│   ├── completion.py       # shell 补全脚本生成
-│   ├── _version.py         # 版本与提交元数据
-│   ├── help_style.py       # Rich 帮助格式化
-│   ├── workflow_gate.py    # 受保护的工作流执行器
-│   └── classify/           # entomokit classify *
-│       ├── train.py
-│       ├── predict.py
-│       ├── evaluate.py
-│       ├── embed.py
-│       ├── cam.py
-│       └── export_onnx.py
-├── src/
-│   ├── common/             # 共享工具（CLI、annotation_writer、logging、validators）
-│   ├── classification/     # AutoMM 分类逻辑
-│   ├── segmentation.py     # 分割领域逻辑
-│   ├── framing/            # 视频帧提取领域逻辑
-│   ├── cleaning/           # 图像清洗领域逻辑
-│   ├── augment/            # 图像增强领域逻辑
-│   ├── splitting/          # 数据集划分领域逻辑
-│   ├── measurement/        # 形态学测量逻辑
-│   ├── synthesis/          # 图像合成领域逻辑
-│   ├── doctor/             # 环境诊断
-│   ├── sam3/               # SAM3 模型实现
-│   └── lama/               # LaMa 修复实现
-├── tests/                  # 测试文件
-├── data/                   # 数据目录（大文件已忽略）
-├── models/                 # 模型权重（大文件已忽略）
-├── docs/                   # 计划、规格、变更摘要
-├── requirements.txt        # Python 依赖
-└── setup.py                # 包配置
-```
-
-## 模型要求
-
-### SAM3 模型
-
-对于基于 SAM3 的方法（`sam3`、`sam3-bbox`），需要从 Hugging Face 下载检查点并通过 `--sam3-checkpoint` 指定。
-
-下载链接：https://huggingface.co/facebook/sam3
-
-### LaMa 模型
-
-对于 `--repair-strategy lama`，需要将 Big-LaMa 模型放置在：
-```
-models/big-lama/
-├── config.yaml
-└── models/best.ckpt
-```
-
-下载链接：https://github.com/advimman/lama
-
-### AutoMM / timm（classify 命令）
-
-安装 `classify` 扩展 — AutoMM 会在首次使用时自动下载骨干网络权重。
-
-支持的 timm 骨干网络包括：
-- `convnextv2_femto`（默认，轻量级）
-- `convnextv2_tiny`、`convnextv2_small`、`convnextv2_base`
-- `resnet18`、`resnet50`、`resnet101`
-- `efficientnet_b0` 到 `efficientnet_b7`
-- `vit_small_patch16_224`、`vit_base_patch16_224`
-- 更多模型见 [timm models](https://huggingface.co/timm)
-
-## 使用方法
-
-### 目录输入与输出策略
-
-本策略适用于所有面向目录的命令（`extract-frames`、`segment`、`measure`、
-`synthesize`、`clean`、`augment`），以及 `classify embed`、`classify cam`、
-`classify predict` 的目录发现：
-
-- 面向目录的命令默认递归扫描；不再提供 `--recursive` 参数，也没有扁平化选项。
-- 普通文件输出会镜像输入文件相对于输入根目录的路径。例如
-  `clean --input-dir in --out-dir out` 会把 `in/beetles/a.jpg` 输出为
-  `out/cleaned_images/beetles/a.jpg`，因此不同子目录下的同名文件不会互相覆盖。
-- `segment` 是刻意的例外：它不镜像输入路径，而是把所有图像平铺到 `images/`
-  下，并把每个输入相对路径编码为唯一的扁平样本 ID（可读词干加路径摘要，例如
-  `a__4cabcf2b3682`），注释写到各自的注释目录。完整的标准数据集布局（例如
-  Pascal VOC 的 `JPEGImages/`）由后续转换/划分步骤生成，而不是 `segment`
-  直接产出。
-- CSV 驱动的命令（`split-csv`，以及显式传入 `--input-csv` 的分类命令）仍以
-  CSV 为准，不适用本目录策略。
-
-推荐的工作流命令顺序：
-
-1. `extract-frames`
-2. `segment`
-3. `measure`（可选，基于分割掩码）
-4. `synthesize`
-5. `clean`
-6. `augment`
-7. `split-csv`
-8. `classify`
-
-### segment 命令
-
-使用多种方法（`sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox`）从图像中分割昆虫。可选择生成 COCO、VOC 或 YOLO 格式的标注。
-
-#### 基本用法
+随后清洗帧并为分类构建划分：
 
 ```bash
-# SAM3 带 alpha 通道（透明背景）
-entomokit segment \
-    --input-dir images/clean_insects/ \
-    --out-dir outputs/insects_clean/ \
-    --sam3-checkpoint models/sam3.pt \
-    --segmentation-method sam3 \
-    --device auto
-
-# 生成 COCO 标注
-entomokit segment \
-    --input-dir images/clean_insects/ \
-    --out-dir outputs/insects_clean/ \
-    --sam3-checkpoint models/sam3.pt \
-    --segmentation-method sam3 \
-    --annotation-format coco
-
-# 生成 YOLO 标注和 xyxy 边界框格式
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --segmentation-method otsu \
-    --annotation-format yolo \
-    --coco-bbox-format xyxy
-
-# SAM3-bbox 模式（裁剪到边界框）
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --sam3-checkpoint models/sam3.pt \
-    --segmentation-method sam3-bbox \
-    --padding-ratio 0.1
-
-# 使用 Otsu 的快速 bbox 裁剪模式（输出 RGB 裁剪图）
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --segmentation-method otsu-bbox \
-    --padding-ratio 0.1
-
-# 使用 GrabCut 的快速 bbox 裁剪模式（输出 RGB 裁剪图）
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --segmentation-method grabcut-bbox \
-    --padding-ratio 0.1
-
-# 使用 LaMa 修复填充孔洞
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --sam3-checkpoint models/sam3.pt \
-    --repair-strategy lama \
-    --lama-model models/big-lama/
+entomokit clean --input-dir ./frames --out-dir ./cleaned
+entomokit split-csv --raw-image-csv ./labels.csv --out-dir ./datasets
 ```
 
-#### 主要参数
+<a id="doctor-command"></a>
+## doctor 命令
 
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--input-dir` | 输入目录 | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--segmentation-method` | `sam3`、`sam3-bbox`、`otsu`、`otsu-bbox`、`grabcut`、`grabcut-bbox` | `sam3` |
-| `--sam3-checkpoint` | SAM3 检查点路径 | sam3/sam3-bbox 必填 |
-| `--hint` | SAM3 文本提示 | `insect` |
-| `--device` | `auto`、`cpu`、`cuda`、`mps` | `auto` |
-| `--confidence-threshold` | 掩码最小置信度 | `0.0` |
-| `--padding-ratio` | 边界框填充比例 | `0.0` |
-| `--repair-strategy` | `opencv`、`sam3-fill`、`black-mask`、`lama` | 无 |
-| `--lama-model` | LaMa 模型目录 | 无 |
-| `--annotation-format` | `coco`、`voc`、`yolo` | 无 |
-| `--coco-bbox-format` | `xywh`、`xyxy` | `xywh` |
-| `--threads` | Otsu/GrabCut 并行图像工作线程数（默认: 8）；SAM3 保持串行 | 8 |
-| `--resume` | 仅当精确的单 mask 输出已存在时跳过该输入；多 mask 输入始终重新处理 | 否 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
-
-**输出结构（COCO 示例）：**
-```
-output_dir/
-├── annotations.coco.json     # COCO 标注
-├── images/                   # 分割后的图像
-│   ├── image_01.png
-│   └── ...
-└── repaired_images/          # （启用 repair-strategy 时）
-```
-
-**YOLO/VOC 布局：**
-```
-output_dir/
-├── images/
-├── labels/                   # YOLO：每张图一个 .txt + data.yaml
-└── Annotations/              # VOC：每张图一个 .xml + ImageSets/Main/
-```
-
-**VOC 分割标注额外目录**（非 `*-bbox` 方法时）：
-```
-output_dir/
-├── Annotations/              # VOC XML（包含 bndbox）
-└── SegmentationClass/        # 分割 mask PNG（前景=255，背景=0）
-```
-
-**标注字段说明**：
-- `area` 在非 `*-bbox` 方法下为**掩码像素面积**（`np.sum(mask > 0)`），在 `*-bbox` 方法下为**边界框面积**（`w × h`）。
-- `segmentation` 在非 `*-bbox` 方法下为 polygon 坐标数组（`[x1,y1,x2,y2,...]`），在 `*-bbox` 方法下为空。
-
-`segment` 递归扫描 `--input-dir`，把所有图像写入 `images/`（注释写入上述各自的
-注释目录），不镜像输入路径。每个输入相对路径会被编码为唯一、文件系统安全的
-样本 ID（可读词干加路径摘要，例如 `a__4cabcf2b3682`），并用于图像文件、VOC
-XML、YOLO TXT、SegmentationClass 掩码、COCO 文件名和
-`ImageSets/Main/default.txt`。因此不同子目录下的同名图像会生成不同样本，
-`--resume` 也会检查该映射产物，而非按基名 glob。只有精确的单 mask 输出才视为
-完成：多 mask 输入（`{sample_id}_01.png`、`_02` ...）始终重新处理，避免把写
-了一半的结果当作已完成。使用 `--resume` 时，统一的 `annotations.coco.json` 会
-与上一次的文件合并，被跳过的样本保留其标注。完整的标准数据集布局（例如
-Pascal VOC 的 `JPEGImages/`）由后续转换/划分步骤生成，而不是 `segment` 直接
-产出。
-
-分割方法未返回任何掩码的图像会在日志中记录完整源路径，并写入
-`out-dir/no_mask_images.txt`，方便后续核实。
-
----
-
-### measure 命令
-
-从分割掩码批量计算形态学指标。指标定义与 scikit-image `regionprops` 口径对齐，便于结果复现与跨工具对比。
-
-```bash
-# 基础测量并导出 CSV 报告
-entomokit measure \
-    --mask-dir data/segment/images \
-    --out-dir runs/measure
-
-# 带比例尺（微米每像素）
-entomokit measure \
-    --mask-dir data/segment/images \
-    --out-dir runs/measure \
-    --pixel-size-um 2.5
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--mask-dir`, `-i` | 输入掩码目录（递归扫描） | 必填 |
-| `--out-dir`, `-o` | 输出目录 | 必填 |
-| `--pixel-size-um` | 像素尺寸（`um/px`，微米每像素） | 无 |
-| `--verbose`, `-v` | 启用详细日志 | 否 |
-| `--resume` | 追加新掩码的测量结果；跳过 `metrics.csv` 中已有的记录 | 否 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
-
-**输出文件：**
-```
-output_dir/
-├── metrics.csv              # 每张图的指标与告警原因
-├── metrics_summary.csv      # 汇总统计与按原因聚合的告警计数
-└── metric_definitions.csv   # 指标说明（中英文字段 + 单位/公式）
-```
-
-`metrics.csv` 中的 `file_name` 是掩码相对于 `--mask-dir` 的路径（例如
-`beetles/a.png`），既避免嵌套同名掩码冲突，也是 `--resume` 使用的键。
-
-**关于体长/体宽的谨慎说明：**
-- `body_length_*` 与 `body_width_*` 是基于二值掩码几何形态的估计值，不等同于严格解剖学实测值。
-- 当掩码包含附肢（触角/足）、目标被图像边界截断、或虫体区域粘连/破碎时，体长与体宽可能产生偏差。
-- 下游分析前请结合 `quality_flag` 与 `warn_reason`（如 `touching_border`、`too_many_branches`）进行人工复核。
-
----
-
-### extract-frames 命令
-
-从视频文件中提取帧。支持目录或单个视频文件路径。
-
-```bash
-# 从目录提取，每秒一帧
-entomokit extract-frames --input-dir videos/ --out-dir frames/
-
-# 从单个视频提取，时间范围 5s–30s
-entomokit extract-frames --input-dir video.mp4 --out-dir frames/ \
-    --start-time 5.0 --end-time 30.0
-
-# 自定义间隔和格式
-entomokit extract-frames --input-dir videos/ --out-dir frames/ \
-    --interval 500 --out-image-format png
-
-# 限制每个视频的最大帧数
-entomokit extract-frames --input-dir videos/ --out-dir frames/ \
-    --max-frames 100
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--input-dir` | 视频目录或单个视频文件 | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--interval` | 间隔（毫秒） | 1000 |
-| `--start-time` | 开始时间（秒） | 0 |
-| `--end-time` | 结束时间（秒） | 视频结束 |
-| `--out-image-format` | jpg/png/tif | jpg |
-| `--threads` | 并行线程数 | 8 |
-| `--max-frames` | 每个视频最大帧数 | 全部 |
-| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
-
-**支持的视频格式**：mp4、mov、avi、mkv、webm、flv、m4v、mpeg、mpg、wmv、3gp、ts
-
-目录输入会被递归扫描。帧写入
-`out-dir/<视频的输入相对目录>/<视频词干>/`，因此不同子目录下的同名视频会
-得到独立的帧目录树；`--resume` 检查映射后的帧目录。
-
----
-
-### clean 命令
-
-清洗和去重图像，规范化命名。
-
-```bash
-# 基本用法（MD5 去重）；递归扫描并镜像子目录结构
-entomokit clean --input-dir images/raw/ --out-dir images/cleaned/
-
-# 感知哈希去重
-entomokit clean --input-dir images/ --out-dir cleaned/ \
-    --dedup-mode phash --phash-threshold 5
-
-# 调整短边为 512px，并用边界中位色填充为正方形
-entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
-    --out-short-size 512 --out-image-format png --pad-color median
-
-# 保持原始尺寸和 EXIF 数据
-entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
-    --out-short-size -1 --keep-exif
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--input-dir` | 输入目录（递归扫描） | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--out-short-size` | 短边大小（-1 = 原始） | 512 |
-| `--pad-color` | 将非正方形图像填充为正方形：`none`、`median`、`black`、`white`（`median` 使用边界像素的 RGB 中位数） | none |
-| `--dedup-mode` | `none`、`md5`、`phash`、`md5+phash`（先执行 md5，再对剩余图片执行 phash） | md5 |
-| `--phash-threshold` | Phash 相似度阈值 | 5 |
-| `--out-image-format` | jpg/png/tif | jpg |
-| `--keep-exif` | 保留 EXIF 元数据 | 否 |
-| `--threads` | 并行线程数 | 12 |
-| `--resume` | 允许进入非空输出目录，不报错 | 否 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
-
-清洗后的图像写入 `out-dir/cleaned_images/<输入相对路径>`。先缩放，后填充。
-
----
-
-### augment 命令
-
-使用 albumentations 预设或自定义策略对图像进行增强。
-
-```bash
-# 默认 light 预设，每张输入图生成 1 张增强图
-entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/
-
-# heavy 预设，每张输入图生成 3 张增强图
-entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
-    --preset heavy --multiply 3 --seed 123
-
-# 使用自定义策略 JSON
-entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
-    --policy configs/augment_policy.json
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--input-dir` | 输入图像目录。支持格式：jpg/jpeg、png、bmp、tif/tiff、webp。输出格式与输入保持一致（不转换格式——如需转换，请使用 `entomokit clean --out-image-format`）。 | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--preset` | `light`、`medium`、`heavy`、`safe-for-small-dataset` | `light` |
-| `--policy` | 自定义策略 JSON 路径（与 `--preset` 互斥） | 无 |
-| `--seed` | 随机种子 | 42 |
-| `--multiply` | 每张输入图生成的增强副本数量 | 1 |
-| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
-
-**输出：**
-```
-output_dir/
-├── images/               # 镜像每张输入图的子目录路径
-│   └── <子目录>/source_aug01.png
-└── augment_manifest.json
-```
-
-输入目录会被递归扫描。每次输出都保留 `_augNN` 后缀（即使 `--multiply 1`），
-因此永远不会覆盖原始文件名。manifest 中的 `original` 与 `augmented` 均为
-输入相对路径。
-
----
-
-### split-csv 命令
-
-将标注 CSV 划分为 train / val / test 文件。
-
-```bash
-# 比例划分（80/10/10）
-entomokit split-csv --raw-image-csv data/images.csv \
-    --known-test-sample-ratio 0.1 --val-ratio 0.1 --out-dir datasets/
-
-# 数量划分并复制图像
-entomokit split-csv --raw-image-csv data/images.csv --mode count \
-    --known-test-sample-count 100 --val-count 50 \
-    --copy-images --images-dir images/ --out-dir datasets/
-
-# 带未知类别测试划分（用于开放集评估）
-entomokit split-csv --raw-image-csv data/images.csv \
-    --unknown-test-sample-ratio 0.1 \
-    --known-test-sample-ratio 0.1 \
-    --out-dir datasets/
-
-# 过滤样本过少的类别
-entomokit split-csv --raw-image-csv data/images.csv \
-    --min-count-per-class 10 \
-    --out-dir datasets/
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--raw-image-csv` | 输入 CSV（image、label 列） | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--mode` | `ratio` 或 `count` | ratio |
-| `--val-ratio` / `--val-count` | 验证集划分（若用于 `classify train`，建议保持 0 — AutoGluon 会自动执行内部 train/val 划分） | 0 |
-| `--known-test-sample-ratio` | 已知样本测试比例 | 0.1 |
-| `--unknown-test-sample-ratio` | 未知样本测试比例 | 0 |
-| `--known-test-sample-count` | 已知样本测试目标数量（count 模式） | 0 |
-| `--unknown-test-sample-count` | 未知样本测试目标数量（count 模式） | 0 |
-| `--min-count-per-class` | 删除少于该数量的类别 | 0 |
-| `--max-count-per-class` | 每个类别的最大图像数 | 无 |
-| `--copy-images` | 复制图像到划分子目录 | 否 |
-| `--images-dir` | 源图像目录（用于复制） | 无 |
-| `--seed` | 随机种子 | 42 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新生成所有划分 | 否 |
-
-**输出：**
-```
-output_dir/
-├── train.csv
-├── val.csv          # 指定 --val-ratio / --val-count 时
-├── test.known.csv
-├── test.unknown.csv # 配置未知类别时
-├── class_count/     # 各划分的类别统计
-│   ├── class.train.count
-│   ├── class.val.count
-│   └── ...
-└── images/          # 使用 --copy-images 时
-    ├── train/
-    ├── val/
-    └── test_known/
-```
-
----
-
-### synthesize 命令
-
-将目标对象合成到背景图像上，支持旋转、颜色匹配和智能定位。
-
-```bash
-# 基本合成
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --num-syntheses 10
-
-# 带 COCO 标注和旋转
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --num-syntheses 10 \
-    --annotation-output-format coco \
-    --rotate 30
-
-# 带 YOLO 标注
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --annotation-output-format yolo \
-    --coco-bbox-format xyxy
-
-# 避开背景中的黑色区域
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --avoid-black-regions \
-    --color-match-strength 0.7
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--target-dir` | 目标图像（带 alpha 通道） | 必填 |
-| `--background-dir` | 背景图像 | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--num-syntheses` | 正整数 = 每个目标的合成次数；0 到 1 之间的小数 = 采样的目标比例，每个选中目标生成一张 | 1 |
-| `--seed` | 目标采样与任务局部合成随机性的基础随机种子 | 42 |
-| `--annotation-output-format` | `coco`、`voc`、`yolo` | `coco` |
-| `--coco-bbox-format` | `xywh`、`xyxy` | `xywh` |
-| `--rotate` | 最大旋转角度 | 0 |
-| `--avoid-black-regions` | 避开暗色背景区域 | 否 |
-| `--color-match-strength` | 0–1 颜色匹配强度 | 0.5 |
-| `--area-ratio-min` | 最小目标/背景面积比 | 0.05 |
-| `--area-ratio-max` | 最大目标/背景面积比 | 0.20 |
-| `--threads` | 并行工作线程数 | 4 |
-| `--resume` | 跳过 `--out-dir` 中已存在的文件，继续上次运行 | 否 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新开始 | 否 |
-
-**输出（COCO）：**
-```
-output_dir/
-├── images/                 # 镜像每个目标的子目录路径
-│   └── <子目录>/target_01.png
-└── annotations.coco.json
-```
-
-目标与背景目录都会被递归扫描。每个合成任务独立采样背景（有放回），因此
-每个目标生成 N 张时不受背景数量限制。小数 `--num-syntheses`（如 `0.5`）
-在固定 `--seed` 下会确定性地选取该比例的目标，每个选中目标生成一张。
-标注与图像使用相同的目标相对路径。输出文件名为 `{target_stem}_{NN}`；同一目录下
-仅扩展名不同的同名目标（例如 `a.png` 与 `a.tif`）会在词干中加入短路径摘要，避免
-互相覆盖。使用 `--resume` 时，统一的 `annotations.coco.json` 会与上一次的文件
-合并，被跳过的目标保留其标注。
-
-`--target-dir` 必须是 RGBA 抠图（例如 mask 模式的 `segment` 输出：
-`--segmentation-method sam3`、`otsu` 或 `grabcut`）。bbox 模式裁剪输出
-（`sam3-bbox`、`otsu-bbox`、`grabcut-bbox`）、修复图（repaired_images）及原始
-照片都是 RGB，会被拒绝。若所有目标都加载失败，错误信息会列出实际观测到的
-模式（例如 `18 RGB`）。
-
-**输出（YOLO）：**
-```
-output_dir/
-├── images/
-├── labels/
-└── data.yaml
-```
-
----
-
-### classify 命令组
-
-所有分类命令需要安装 `classify` 扩展：
-
-```bash
-pip install -e ".[classify]"
-```
-
-#### `classify train`
-
-使用 AutoMM MultiModalPredictor 训练图像分类器。
-
-```bash
-entomokit classify train \
-    --train-csv data/train.csv \
-    --images-dir data/images/ \
-    --out-dir runs/exp1/ \
-    --base-model convnextv2_femto \
-    --augment medium \
-    --max-epochs 50 \
-    --learning-rate 3e-4 \
-    --device auto
-```
-
-**恢复训练**（将 epoch 限制从 50 扩展到 100）：
-
-```bash
-entomokit classify train \
-    --train-csv data/train.csv \
-    --images-dir data/images/ \
-    --out-dir runs/exp1/ \
-    --base-model convnextv2_femto \
-    --max-epochs 100 \
-    --resume
-```
-
-**自定义数据增强**：
-
-```bash
-# 使用预设
-entomokit classify train ... --augment heavy
-
-# 使用自定义变换（JSON 数组）
-entomokit classify train ... --augment '["random_resize_crop","color_jitter","randaug"]'
-```
-
-**使用 Focal Loss**（适用于类别不平衡）：
-
-```bash
-entomokit classify train \
-    --train-csv data/train.csv \
-    --images-dir data/images/ \
-    --out-dir runs/exp1/ \
-    --focal-loss \
-    --focal-loss-gamma 2.0
-```
-
-| 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--train-csv` | 含 `image` 和 `label` 列的 CSV | 必填 |
-| `--images-dir` | 训练图像目录 | 必填 |
-| `--out-dir` | 输出目录 | 必填 |
-| `--base-model` | timm 骨干网络名称 | `convnextv2_femto` |
-| `--augment` | 预设或 JSON 数组 | `medium` |
-| `--max-epochs` | 最大训练轮数 | 50 |
-| `--time-limit` | 时间限制（小时） | 1.0 |
-| `--resume` | 从检查点继续 | 否 |
-| `--learning-rate` | AutoMM `optim.lr` | `1e-4` |
-| `--weight-decay` | AutoMM `optim.weight_decay` | `1e-3` |
-| `--warmup-steps` | AutoMM `optim.warmup_steps` | `0.1` |
-| `--patience` | 早停耐心值 | 10 |
-| `--top-k` | 检查点平均数量 | 3 |
-| `--focal-loss` | 启用 focal loss | 否 |
-| `--seed` | 传给 AutoMM 的随机种子，用于可复现训练 | 0 |
-| `--device` | `auto/cpu/cuda/mps` | `auto` |
-| `--batch-size` | 批量大小 | 32 |
-| `--num-workers` | DataLoader 工作线程数 | 4 |
-| `--overwrite` | 删除 `--out-dir` 内容并重新训练 | 否 |
-
-**数据增强预设**：
-| 预设 | 变换 |
-|--------|-----------|
-| `none` | resize_shorter_side, center_crop |
-| `light` | none + random_horizontal_flip |
-| `medium` | light + color_jitter + trivial_augment |
-| `heavy` | random_resize_crop, random_horizontal_flip, random_vertical_flip, color_jitter, trivial_augment, randaug |
-
----
-
-#### `classify predict`
-
-使用 AutoMM 或 ONNX 模型对图像进行推理。
-
-```bash
-# AutoMM 模型
-entomokit classify predict \
-    --images-dir data/test/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/predict/
-
-# ONNX 模型
-entomokit classify predict \
-    --input-csv test.csv \
-    --onnx-model runs/onnx/model.onnx \
-    --out-dir runs/predict/
-
-# CSV 图像名称 + 图像根目录
-entomokit classify predict \
-    --input-csv out/split/test.known.csv \
-    --images-dir data/Epidorcus/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/predict/
-```
-
-**输入解析规则**：
-- 至少提供 `--input-csv` 或 `--images-dir` 之一
-- 如果 CSV 的 `image` 值已经是可读路径，则直接使用 CSV
-- 如果 CSV 的 `image` 值是文件名/相对路径，还需提供 `--images-dir`
-- 如果只提供 `--images-dir`，则预测该目录下的所有图像
-
-目录发现是递归的。发现的图像以相对于 `--images-dir` 的路径记录（例如
-`beetles/a.jpg`），因此嵌套的同名图像不会混淆。通过 `--input-csv` 显式提供
-的 CSV 路径保持不变。
-
-使用 `--overwrite` 可删除 `--out-dir` 内容并重新预测所有输入。
-
-**ONNX 要求**：
-```bash
-pip install onnxruntime
-# 或
-pip install 'entomokit[classify]'
-```
-
-**ONNX 输出**：
-- 输出列与 AutoGluon 保持一致：`image`、`prediction`、`proba_<类别名称>`、...
-- 当 ONNX 文件旁存在 `label_classes.json` 时，`prediction` 为类别名称，否则为数字索引
-
----
-
-#### `classify evaluate`
-
-在测试集上评估模型性能。
-
-```bash
-entomokit classify evaluate \
-    --test-csv data/test.csv \
-    --images-dir data/images/ \
-    --onnx-model runs/onnx/model.onnx \
-    --out-dir runs/eval/
-```
-
-**输出指标**（保存到 `evaluations.csv`）：
-- Accuracy、Balanced Accuracy
-- Precision/Recall/F1（macro、micro、weighted）
-- Matthews 相关系数（MCC）
-- Quadratic Kappa
-- ROC-AUC（OVO、OVR）
-
-**附加输出**：
-- `confusion_matrix.csv`：原始计数混淆矩阵（真实类别为行，预测类别为列）
-- `confusion_matrix_normalized.csv`：按真实类别行归一化的混淆矩阵，便于诊断每类召回表现
-- `per_class_metrics.csv`：每类 precision、recall、F1、support
-- `confusion_matrix.pdf`：当类别数较少、图仍可读时导出的热图 PDF
-
-使用 `--overwrite` 可删除 `--out-dir` 内容并重新评估。
-
----
-
-#### `classify embed`
-
-提取嵌入向量并计算质量指标。
-
-```bash
-# 预训练 timm 骨干网络（无需训练）
-entomokit classify embed \
-    --images-dir data/images/ \
-    --base-model convnextv2_femto \
-    --label-csv data/labels.csv \
-    --visualize \
-    --out-dir runs/embed/
-
-# 微调后的 AutoMM 骨干网络
-entomokit classify embed \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --label-csv data/labels.csv \
-    --out-dir runs/embed/
-```
-
-**输出**：
-- `embeddings.csv` — 特征向量（feat_0, feat_1, ...）；`image` 列是相对于 `--images-dir` 的路径（例如 `beetles/a.jpg`）
-- `metrics.csv` — 质量指标
-- `umap.pdf` — UMAP 可视化（使用 `--visualize`）
-
-`--images-dir` 会被递归扫描。
-
-使用 `--overwrite` 可删除 `--out-dir` 内容并重新提取嵌入。
-
-**质量指标**：
-| 指标 | 描述 |
-|--------|-------------|
-| NMI | 标准化互信息（真实标签 vs KMeans） |
-| ARI | 调整兰德指数 |
-| Recall@1/5/10 | K 值检索召回率；分母包含全部查询样本 |
-| kNN_Acc_k1/5/20 | 交叉验证的 k-NN 准确率 |
-| Linear_Probing_Acc | 交叉验证的线性探针准确率 |
-| Linear_Probing_Balanced_Acc | 交叉验证的线性探针平衡准确率 |
-| mAP@R | R 处平均精度均值；无（除自身外）相关样本的查询不参与平均 |
-| Purity | 聚类纯度 |
-| Silhouette_Score | 基于真实标签的余弦轮廓系数 |
-
-**指标约定**：
-
-- kNN 与线性探针使用 `StratifiedKFold(n_splits=min(5, 最小类样本数), shuffle=True, random_state=42)` 交叉验证。
-- 聚类使用 KMeans，簇数等于真实类别数。
-- 部分指标无法计算时，在 CSV 中写为空单元格、终端打印 `N/A`：某类只有 1 个样本时的聚类与线性探针、样本数不足 `k + 1` 时的 `Recall@K`、去重后嵌入数少于簇数时的聚类、以及轮廓系数无定义时。`N/A` 表示“不可计算”，**不等于 0**。
-- `Recall@K` 与 `mAP@R` 始终按上表定义计算：单一类别且样本数大于 1 时结果为 `1.0`（每个查询都能找到同标签邻居），而不是 `N/A`。
-- `--label-csv` 的 `image` 值必须唯一，且至少有一个值与 `--images-dir` 中的图片**文件**名匹配；重复行与完全无交集都会在提取前报错，名字像图片的目录不算匹配。
-- `--metrics-sample-size` 限制的是**全部**质量指标（聚类、Recall@K、kNN、mAP@R、轮廓系数、线性探针）所用的样本数，并非只影响线性探针，也是主要的耗时调节项。`mAP@R` 仍需将每个查询与其余所有样本比较，其邻居索引矩阵随样本数平方增长（默认 10000 时约 800 MB）；内存紧张时请调低该值。
-- 这些数值与 **0.6.2 之前** 的运行结果不可直接比较：交叉验证划分、轮廓系数距离度量、Recall@K/mAP@R 的按索引自排除、不可计算值的表示方式都发生了变化。字段名保持不变，`Linear_Probing_Balanced_Acc` 是新增列，插在 `Linear_Probing_Acc` 之后（其后所有列右移一位，请按表头名取值而非列位置）。
-- 这些 kNN/评估修正已在 `0.6.2` 发布；`0.7.0` 不改变嵌入指标算法。
-
----
-
-#### `classify cam`
-
-生成 GradCAM 热力图用于模型可解释性。
-
-```bash
-entomokit classify cam \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --cam-method gradcam \
-    --out-dir runs/cam/ \
-    --save-npy raw
-```
-
-**带真实标签**：
-```bash
-entomokit classify cam \
-    --label-csv data/test.csv \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/cam/
-```
-
-**CAM 方法**：`gradcam`、`gradcampp`、`layercam`、`scorecam`、`eigencam`、`ablationcam`
-
-**架构自动检测**：自动检测 CNN 或 Transformer/ViT 架构。Swin backbone 按 ViT 类模型处理，默认使用最后一个 stage 的最后一个 block 作为 CAM 目标层；ConvNeXt 使用最后一个 stage 的 block，而不是其中的逐点 `mlp.fc2` 层，以避免 GradCAM 热图退化为空。
-
-**评估预处理**：`--eval-transform center-crop`（默认）使用模型保存的确定性验证预处理；热图只覆盖模型实际看到的中心裁剪区域。`--eval-transform whole-specimen-pad` 会先用图像边缘中位色补成方形再缩放，保持宽高比，使热图覆盖整个标本。
-
-**输出**：
-- `figures/` — CAM 叠加图像
-- `cam_summary.csv` — 元数据
-- `arrays/` — CAM 数组（`--save-npy raw` 保留未归一化 CAM；`--save-npy normalized` 写入逐图 min-max 值；默认不生成任何数组）
-
-`--save-npy` 需要显式取值：`none`（默认，不保存）、`raw`（未归一化正值 CAM，保留幅值）、`normalized`（逐图 min-max `[0, 1]`，即 overlay 使用的归一化副本）。`raw` 幅值统计仅适用于固定设置下的梯度类 CAM 方法：只在同一模型、同一目标层、同一预处理配置内可比；`eigencam` 的 `raw` 数值仅为完整性导出，不适用于响应强度统计。`--save-npy normalized` 保留旧的归一化语义，在开发期间的测量容差内数值等价；overlay 保持相同的显示语义，但不保证像素级完全一致。
-
-**查找目标层**：
-```bash
-entomokit classify cam \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --dump-model-structure \
-    --out-dir runs/cam/
-# 然后查看 runs/cam/model_layers.txt
-```
-
-**注意**：不支持 ONNX 模型（需要 PyTorch hooks）。
-
-使用 `--overwrite` 可删除 `--out-dir` 内容并重新生成 CAM 可视化。
-
----
-
-#### `classify export-onnx`
-
-将 AutoMM 模型导出为 ONNX 格式用于部署。
-
-```bash
-entomokit classify export-onnx \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/onnx/ \
-    --opset 17
-```
-
-**使用示例图像进行追踪**：
-```bash
-entomokit classify export-onnx \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/onnx/ \
-    --sample-image data/sample.jpg
-```
-
-**输出**：
-- `model.onnx` — ONNX 模型文件
-- `label_classes.json` — 类别标签映射
-
-使用 `--overwrite` 可删除 `--out-dir` 内容并重新导出 ONNX 模型。
-
----
-
-### doctor 命令
-
-诊断环境与依赖是否满足当前功能需求。
+诊断环境与依赖就绪情况：
 
 ```bash
 entomokit doctor
 ```
 
-报告内容包括：
-- Python 版本与可用设备（`cpu`、`cuda`、`mps`）
-- 关键依赖的版本与状态（ok/missing/outdated）
-- 安装/升级建议（包含 `autogluon.multimodal>=1.5.0`）
+报告包含 Python 与可用设备（`cpu`、`cuda`、`mps`）、关键包版本与状态
+（ok/missing/outdated），以及安装或升级建议。`classify` 附加依赖要求
+`autogluon.multimodal>=1.5.0`，而 `doctor` 目前把 `1.4.0` 视为不过期，仅在低于该版本时
+建议升级。`doctor` 没有用户可设置的参数。
 
----
+<a id="update-command"></a>
+## update 命令
 
-### update 命令
-
-从 GitHub 检查更新（通过主分支上的 `version.txt`）并可选地安装最新版本。适用于所有用户，无需本地 git 历史记录。
+检查 GitHub 上是否有新版本（读取 `main` 分支的 `version.txt`），并可选地安装。无论本地
+git 历史如何都可用。
 
 ```bash
-entomokit update           # 检查并提示
+entomokit update           # 检查并询问
 entomokit update --check   # 仅检查，不安装
-entomokit update --yes     # 安装，不提示
+entomokit update --yes     # 不再询问，直接安装
 ```
 
 | 参数 | 描述 | 默认值 |
-|-----------|-------------|---------|
-| `--check` | 仅显示版本信息；不安装 | 否 |
+|---|---|---|
+| `--check` | 只显示版本信息，不安装 | 否 |
 | `--yes`, `-y` | 跳过确认提示 | 否 |
 
----
+<a id="completion-command"></a>
+## Shell 补全
 
+为 bash、zsh 或 fish 生成静态补全脚本：
+
+| Shell | 参数 | 安装路径 |
+|---|---|---|
+| `bash` | `--install` | `~/.local/share/bash-completion/completions/entomokit` |
+| `zsh` | `--install` | `~/.zfunc/_entomokit` |
+| `fish` | `--install` | `~/.config/fish/completions/entomokit.fish` |
+
+不加 `--install` 时脚本直接打印到标准输出。使用 zsh 时，请确保 shell 配置包含
+`fpath=(~/.zfunc $fpath)`，并用 `autoload -Uz compinit && compinit` 初始化补全。
+
+<a id="directory-policy"></a>
+## 目录输入与输出策略
+
+本策略适用于所有面向目录的命令（`extract-frames`、`segment`、`measure`、`synthesize`、
+`clean`、`augment`），以及 `classify embed`、`classify cam`、`classify predict` 的目录
+发现：
+
+- 面向目录的命令默认递归扫描；不再提供 `--recursive` 参数，也没有扁平化选项。
+- 普通文件输出会镜像输入文件相对于输入根目录的**目录结构**，但部分命令还会重写文件名：
+  `clean` 会规范化词干、保证同目录内唯一并套用 `--out-image-format`，`augment` 会追加
+  `_augN`（按 `--multiply` 的位数补零：`1`–`9` 为 `_aug1`，`10`–`99` 为 `_aug01`，
+  `100` 为 `_aug001`）。例如 `clean --input-dir in --out-dir out` 在默认格式下把 `in/beetles/a.png`
+  输出为 `out/cleaned_images/beetles/a.jpg`，因此不同子目录下的同名文件保持独立，而同一目录
+  下第二张 `a.tif` 会变成 `a_1.jpg`。
+- `segment` 是刻意的例外：它不镜像输入路径，而是把所有图像平铺到 `images/` 下，并把每个
+  输入相对路径编码为唯一的扁平样本 ID（可读词干加路径摘要，例如 `a__4cabcf2b3682`），
+  注释写到各自的注释目录。完整的标准数据集布局（例如 Pascal VOC 的 `JPEGImages/`）由后续
+  转换或划分步骤生成，而不是 `segment` 直接产出。
+- CSV 驱动的命令（`split-csv`，以及显式传入 `--input-csv` 的分类命令）仍以 CSV 为准，
+  不适用本策略。
+- `--out-dir` 非空时会报错退出。提供 `--resume` 的命令可用它继续运行；没有
+  `--resume` 的命令必须使用 `--overwrite` 才能重新开始。
+
+<a id="common-behaviours"></a>
 ## 通用行为
 
-### 日志
+- **日志**：有输出目录的命令会写入 `log.txt`：`extract-frames`、`segment`、`measure`、
+  `synthesize`、`clean`、`augment`、`split-csv`、`classify predict`、
+  `classify evaluate`、`classify cam` 与 `classify export-onnx` 写入 `out-dir/log.txt`；
+  而 `classify train` 与 `classify embed` 写入 `out-dir/logs/log.txt`。`doctor`、
+  `update` 与 `completion` 不写日志文件。文件头记录 `EntomoKit version:`（例如
+  `0.7.1`）、`Commit:`、完整命令行、时间戳与所有参数值，随后是运行输出。`--verbose`
+  启用 debug 级日志。
+- **中断处理**：`measure` 与 `augment` 会在下一张图像的边界停止（逐图之前检查关闭标志）。
+  `segment` 同样在图像之间检查，但只有串行路径会在完成当前图像后停止：并发 Otsu/GrabCut
+  路径已提前提交全部任务，因此这些任务会先跑完。`synthesize` 只在准备任务时检查标志，
+  因此已准备好的任务会全部执行完。`extract-frames`、`clean` 与 `split-csv` 安装了同一个
+  处理器但从不读取该标志：第一次 `Ctrl+C` 只设置标志并打印提示，需第二次 `Ctrl+C` 才退出，
+  且不承诺保留部分结果。分类命令与运维命令不安装该处理器。
+- **设备选择**：`--device auto` 依次优先 CUDA、MPS、CPU。
+- **版本号**：`entomokit --version`（或 `-v`）打印已安装版本。
 
-所有命令会在输出目录保存 `log.txt`，开头依次为：
-- `EntomoKit version:`（例如 `0.7.0`）
-- `Commit:`（短 Git 提交 id，非仓库环境为 `unknown`）
-- 完整命令行
-- 时间戳
-- 所有参数值
-- 运行时输出
-
-使用 `--verbose` 获取调试级别输出。
-
-### 优雅退出
-
-按 `Ctrl+C` — 当前图像处理完成后退出，保存部分结果。
-
-### 设备选择
-
-`--device auto` 自动选择：
-1. CUDA（如果可用）
-2. MPS / Apple Silicon（如果可用）
-3. CPU（回退）
-
-### Shell 补全
-
-安装 entomokit 的 shell 补全：
-
-```bash
-entomokit completion bash --install
-entomokit completion zsh --install
-entomokit completion fish --install
-```
-
-支持的 shell：bash、zsh、fish
-
-### 版本号
-
-查看已安装版本：
-
-```bash
-entomokit --version
-entomokit -v
-```
-
----
-
+<a id="assistant-integration"></a>
 ## AI 助手集成 (Skills)
 
-EntomoKit 包含一个用于 AI 助手（OpenCode、Claude Code、Codex 等）的 skill，为不熟悉命令行工具的用户提供引导式工作流编排。
-
-### 什么是 `entomokit-workflow` Skill？
-
-`entomokit-workflow` skill 使 AI 助手能够：
-- 引导用户完成完整的数据集准备流程
-- 在执行前验证参数和 CSV 文件
-- 为每个命令提供逐步指导
-- 处理错误并建议修复方案
-- 在中断后恢复工作流
-
-### 安装
-
-**OpenCode:**
+`entomokit-workflow` skill 让 AI 助手（OpenCode、Claude Code、Codex 等）引导不熟悉命令行
+的用户完成整条流水线：每次运行前用运行时 CLI schema 校验参数、逐步确认、给出错误恢复建议、
+中断后恢复工作流，以及可选的教学演示模式。
 
 ```bash
-mkdir -p ~/.config/opencode/skills
-cp -r skills/entomokit-workflow ~/.config/opencode/skills/
+mkdir -p ~/.config/opencode/skills && cp -r skills/entomokit-workflow ~/.config/opencode/skills/
+mkdir -p ~/.claude/skills && cp -r skills/entomokit-workflow ~/.claude/skills/
+mkdir -p ~/.codex/skills && cp -r skills/entomokit-workflow ~/.codex/skills/
 ```
 
-**Claude Code:**
+详细的 skill 规则见 [SKILL.md](skills/entomokit-workflow/SKILL.md)，对话示例见
+[teaching playbook](skills/entomokit-workflow/references/teaching-playbook.md#user-conversation-examples)。
+skill 的引导式确认策略不是 CLI 的前置要求：下列每个命令在不使用 skill 时行为相同。
 
-```bash
-mkdir -p ~/.claude/skills
-cp -r skills/entomokit-workflow ~/.claude/skills/
-```
+## 命令
 
-**Codex:**
+功能命令的完整参考位于 `docs/commands/`；`doctor`、`update` 与 `completion` 已在上文说明。
 
-```bash
-mkdir -p ~/.codex/skills
-cp -r skills/entomokit-workflow ~/.codex/skills/
-```
+| 命令 | 描述 | 参考 |
+|---|---|---|
+| `extract-frames` | 从视频文件中提取帧 | [参考](docs/commands/extract-frames.cn.md) |
+| `segment` | 从图像中分割昆虫（SAM3、Otsu、GrabCut 与 bbox 裁剪模式） | [参考](docs/commands/segment.cn.md) |
+| `measure` | 从分割掩码中计算形态学指标 | [参考](docs/commands/measure.cn.md) |
+| `synthesize` | 将昆虫合成到背景图像上 | [参考](docs/commands/synthesize.cn.md) |
+| `clean` | 清洗、缩放并去重图像 | [参考](docs/commands/clean.cn.md) |
+| `augment` | 使用预设或自定义 albumentations 策略进行图像增强 | [参考](docs/commands/augment.cn.md) |
+| `split-csv` | 将数据集划分为 train/val/test CSV 文件 | [参考](docs/commands/split-csv.cn.md) |
+| `doctor` | 诊断环境与缺失依赖 | [参考](#doctor-command) |
+| `update` | 检查更新并可选安装 GitHub 上的最新版本 | [参考](#update-command) |
+| `completion` | 生成 shell 补全脚本 | [参考](#completion-command) |
 
-**其他 CLI 工具：** 将 `skills/entomokit-workflow` 目录复制到您工具的 skills 目录中。
+<a id="classify-commands"></a>
+### 分类命令
 
-### 使用方法
+这些命令需要 `classify` 附加依赖。
 
-安装后，与 AI 助手开始对话：
+| 命令 | 描述 | 参考 |
+|---|---|---|
+| `classify train` | 训练 AutoMM 图像分类器 | [参考](docs/commands/classify-train.cn.md) |
+| `classify predict` | 运行推理（AutoGluon 或 ONNX） | [参考](docs/commands/classify-predict.cn.md) |
+| `classify evaluate` | 评估模型性能并导出总体 + 类别级诊断结果 | [参考](docs/commands/classify-evaluate.cn.md) |
+| `classify embed` | 提取嵌入向量 + UMAP + 质量指标 | [参考](docs/commands/classify-embed.cn.md) |
+| `classify cam` | 生成 GradCAM 热力图 | [参考](docs/commands/classify-cam.cn.md) |
+| `classify export-onnx` | 导出模型为 ONNX 格式 | [参考](docs/commands/classify-export-onnx.cn.md) |
 
-**示例 1 - 数据清洗与分类：**
-```
-我需要用 entomokit-workflow skill 对 data/Epidorcus 中的图片进行清洗并训练分类模型。
-```
+## 项目结构
 
-**示例 2 - 完整流程：**
-```
-使用 entomokit-workflow skill 处理 data/my_insects：清洗图片、划分数据集、训练 convnextv2_femto 分类器。
-```
-
-**示例 3 - 教学示范：**
-```
-我想通过 entomokit-workflow skill 学习下 entomokit 工具的相关命令和操作，可以教学示范吗？
-```
-
-AI 将引导您完成每个阶段、确认参数并总结结果。
-
-### 功能特性
-
-| 功能 | 描述 |
-|---------|-------------|
-| 参数验证 | 执行前根据 CLI schema 验证所有参数 |
-| CSV 教学 | 帮助生成和验证 `image,label` CSV 文件 |
-| 错误恢复 | 将错误映射到修复操作 |
-| 演示模式 | 使用仓库示例数据的可选教学流程 |
-
----
+CLI 入口包位于 `entomokit/`，领域逻辑位于 `src/`；模块边界与架构约束见
+[总设计文档](docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md)。
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 详见 LICENSE 文件。
+本项目基于 MIT 许可证发布 — 详见 LICENSE 文件。
 
 ## 联系方式
 
@@ -1213,7 +237,7 @@ AI 将引导您完成每个阶段、确认参数并总结结果。
 
 ## 引用
 
-如果您在研究中使用 EntomoKit，请引用：
+如果 EntomoKit 对你的研究有帮助，请引用：
 
 ```bibtex
 @software{entomokit2026,

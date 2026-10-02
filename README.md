@@ -1,84 +1,41 @@
 # Insect Dataset Toolkit (EntomoKit)
-
 [中文文档](README.cn.md) | **English**
 
-A Python-based toolkit for building insect image datasets. Provides a unified `entomokit` CLI with commands for frame extraction, segmentation, morphology measurement, synthesis, cleaning, augmentation, dataset splitting, AutoMM classification, and environment diagnostics. Includes an `entomokit-workflow` skill for AI assistants (OpenCode, Claude Code, Codex) to guide non-CLI users through the pipeline.
+A Python-based toolkit for building insect image datasets. EntomoKit provides a
+unified `entomokit` CLI for frame extraction, segmentation, morphology
+measurement, synthesis, cleaning, augmentation, dataset splitting, AutoMM
+classification and environment diagnostics, plus an `entomokit-workflow` skill for
+AI assistants.
 
-## Overview
+## Workflow Overview
 
-All functionality is accessed through a single entry point:
+The pipeline is composable; only the steps your data needs are required.
 
-```
-entomokit <command> [options]
-```
+1. `extract-frames` — turn videos into still frames.
+2. `segment` — cut insects out of images and optionally write annotations.
+3. `measure` — optional: morphology metrics from segmentation masks.
+4. `synthesize` — optional: composite RGBA cutouts onto new backgrounds.
+5. `clean` — resize, pad and deduplicate images.
+6. `augment` — optional: expand a small training set.
+7. `split-csv` — build train/val/test CSVs.
+8. `classify train` → `classify predict` / `classify evaluate` / `classify embed` /
+   `classify cam` / `classify export-onnx`.
 
-| Command | Description |
-|---------|-------------|
-| `extract-frames` | Extract frames from video files |
-| `segment` | Segment insects from images (SAM3, Otsu, GrabCut, bbox crop modes) |
-| `measure` | Measure morphology metrics from segmentation masks |
-| `synthesize` | Composite insects onto background images |
-| `clean` | Clean and deduplicate images |
-| `augment` | Augment images with presets or custom albumentations policy |
-| `split-csv` | Split datasets into train/val/test CSVs |
-| `classify train` | Train an AutoMM image classifier |
-| `classify predict` | Run inference (AutoGluon or ONNX) |
-| `classify evaluate` | Evaluate model performance and export overall + per-class diagnostics |
-| `classify embed` | Extract embeddings + UMAP + quality metrics |
-| `classify cam` | Generate GradCAM heatmaps |
-| `classify export-onnx` | Export model to ONNX format |
-| `doctor` | Diagnose environment and missing dependencies |
-| `update` | Check for updates and optionally install the latest version from GitHub |
+You can start at any step: for example go straight from `clean` to `classify train`
+when the images are already labelled, or use `segment` alone for mask extraction.
+AI-assisted runs follow the skill's own guided policy, not this list.
 
-## Features
-
-- **Unified CLI**: Single `entomokit` entry point — no more per-script invocations
-- **Multiple Segmentation Methods**: `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`
-- **Morphology Measurement**: `measure` computes area, length, width, perimeter, Feret diameters, and quality flags from mask images
-- **Flexible Repair Strategies**: OpenCV morphological operations, SAM3-based or LaMa hole filling
-- **Annotation Output**: COCO JSON, VOC Pascal XML, YOLO TXT
-- **Video Frame Extraction**: Multithreaded extraction with time range support
-- **Image Cleaning**: Resize, deduplicate (MD5/Phash), and standardize image naming; always recursive
-- **Image Augmentation**: Albumentations-based preset/custom augmentation with deterministic seeds
-- **Dataset Splitting**: Ratio or count-based train/val/test splits with stratification
-- **Image Synthesis**: Advanced compositing with rotation, color matching, and black region avoidance
-- **AutoMM Classification**: Train, predict, evaluate, embed, GradCAM, and ONNX export
-- **Per-Class Evaluation Diagnostics**: `classify evaluate` writes confusion matrices, normalized recall matrix, per-class precision/recall/F1, and a confusion PDF for small label sets
-- **Environment Diagnostics**: `doctor` command reports missing/outdated dependencies and install suggestions
-- **Embedding Quality Metrics**: NMI, ARI, Recall@K, cross-validated kNN and linear-probe accuracy (incl. balanced accuracy), mAP@R, Silhouette, UMAP visualization
-- **Concurrent Segmentation**: Otsu/GrabCut methods process images concurrently via `--threads`; SAM3 uses a single-model serial path
-- **Comprehensive Logging**: Detailed logging with verbose mode and log file output
-- **AI Assistant Integration**: `entomokit-workflow` skill for guided conversational workflows with OpenCode, Claude Code, Codex, etc.
-
-## Requirements
+## Requirements and Installation
 
 - Python 3.9+
-- Operating Systems: Linux, macOS, Windows
-
-## Installation
-
-Recommended: use an isolated Python environment to avoid dependency conflicts with your system/site-packages.
-
-Before installation, clone the repository and enter the project directory:
+- Linux, macOS or Windows
 
 ```bash
 git clone https://github.com/xtmtd/entomokit.git
 cd entomokit
 ```
 
-### Deployment Mode A (Recommended): Isolated Environment
-
-Choose one of the following:
-
-**Option 1: conda**
-
-```bash
-conda create -n entomokit python=3.11 -y
-conda activate entomokit
-pip install -e .
-```
-
-**Option 2: uv + venv**
+Install into an isolated environment (recommended):
 
 ```bash
 uv venv .venv
@@ -86,996 +43,75 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
-**Option 3: stdlib venv + pip**
+Equivalent alternatives: `python -m venv .venv && source .venv/bin/activate`, or
+`conda create -n entomokit python=3.11 -y && conda activate entomokit`. Installing
+directly into a global environment is possible but risks dependency conflicts.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
+Command extras:
 
-### Basic Installation
+| Extra | Adds |
+|---|---|
+| `.[video]` | `extract-frames` (OpenCV video decoding) |
+| `.[segmentation]` | SAM3 segmentation, SAM3 repair and synthesis annotation output |
+| `.[measurement]` | `measure` (morphology metrics, skeleton computation) |
+| `.[synthesis]` | `synthesize` (polygon simplification, COCO annotations) |
+| `.[cleaning]` | `clean` perceptual-hash dedup |
+| `.[augment]` | `augment` (albumentations) |
+| `.[classify]` | `classify train/predict/evaluate/embed/cam/export-onnx` (AutoMM, timm, GradCAM, UMAP, ONNX) |
+| `.[dev]` | pytest and coverage |
 
-```bash
-pip install -e .
-```
+`measure` and `synthesize` also import `scikit-image`, which neither the
+`measurement` nor the `synthesis` extra declares; install `.[segmentation]` (which
+declares it) or add `scikit-image` explicitly alongside those extras.
 
-### Deployment Mode B (Not Recommended): Direct Global pip
-
-You can install directly into the current Python environment, but this may cause dependency conflicts with other projects:
-
-```bash
-pip install -e .
-```
-
-### With Classification Support
-
-For classification commands (AutoMM, timm, GradCAM, UMAP):
-
-```bash
-pip install -e ".[classify]"
-```
-
-AutoMM official install reference:
-https://auto.gluon.ai/stable/install.html
-
-### With Segmentation Support
-
-For SAM3-based segmentation (also covers synthesis annotation output):
-
-```bash
-pip install -e ".[segmentation]"
-```
-
-### With Synthesis Support
-
-For `entomokit synthesize` (polygon simplification, COCO annotation output):
-
-```bash
-pip install -e ".[synthesis]"
-```
-
-### With Measurement Support
-
-For `entomokit measure` (morphology metrics, skeleton computation):
-
-```bash
-pip install -e ".[measurement]"
-```
-
-### With Video Processing
-
-For video frame extraction:
-
-```bash
-pip install -e ".[video]"
-```
-
-### With Image Cleaning
-
-For perceptual hash deduplication:
-
-```bash
-pip install -e ".[cleaning]"
-```
-
-### With Augmentation
-
-For `entomokit augment`:
-
-```bash
-uv pip install --only-binary :all: stringzilla
-pip install -e ".[augment]"
-```
-
-### Development Installation
+Install several at once, for example the full development set:
 
 ```bash
 uv pip install --only-binary :all: stringzilla
 pip install -e ".[dev,classify,segmentation,synthesis,measurement,video,cleaning,augment]"
 ```
 
-## Shell Completion
+The `stringzilla` line above is required before installing `.[augment]` on platforms
+where only its binary wheel is available. AutoMM publishes its own install notes at
+https://auto.gluon.ai/stable/install.html.
 
-`entomokit` exposes static shell completion scripts through the `completion` subcommand.
+## Quick Start
 
-Generate a script to stdout:
-
-```bash
-entomokit completion bash
-entomokit completion zsh
-entomokit completion fish
-```
-
-Install to the default user-level location for a specific shell:
+The example below needs the `video` extra and writes frames into `./frames`:
 
 ```bash
-entomokit completion bash --install
-entomokit completion zsh --install
-entomokit completion fish --install
+uv pip install -e ".[video]"
+entomokit extract-frames --input-dir ./videos --out-dir ./frames
 ```
 
-Notes:
-
-- `bash` installs to `~/.local/share/bash-completion/completions/entomokit`
-- `zsh` installs to `~/.zfunc/_entomokit`
-- `fish` installs to `~/.config/fish/completions/entomokit.fish`
-- For `zsh`, ensure your shell config includes `fpath=(~/.zfunc $fpath)` and initialize completions with `autoload -Uz compinit && compinit`
-
-## Project Structure
-
-```
-.
-├── entomokit/              # Unified CLI package
-│   ├── main.py             # Entry point dispatcher
-│   ├── segment.py          # entomokit segment
-│   ├── measure.py          # entomokit measure
-│   ├── extract_frames.py   # entomokit extract-frames
-│   ├── synthesize.py       # entomokit synthesize
-│   ├── clean.py            # entomokit clean
-│   ├── augment.py          # entomokit augment
-│   ├── split_csv.py        # entomokit split-csv
-│   ├── doctor.py           # entomokit doctor
-│   ├── update.py           # entomokit update
-│   ├── completion.py       # shell completion script generation
-│   ├── _version.py         # version + commit metadata
-│   ├── help_style.py       # Rich help formatting
-│   ├── workflow_gate.py    # guarded workflow executor
-│   └── classify/           # entomokit classify *
-│       ├── train.py
-│       ├── predict.py
-│       ├── evaluate.py
-│       ├── embed.py
-│       ├── cam.py
-│       └── export_onnx.py
-├── src/
-│   ├── common/             # Shared utilities (CLI, annotation_writer, logging, validators)
-│   ├── classification/     # AutoGluon classification logic
-│   ├── segmentation.py     # Segmentation domain logic
-│   ├── framing/            # Video framing domain logic
-│   ├── cleaning/           # Image cleaning domain logic
-│   ├── augment/            # Image augmentation domain logic
-│   ├── splitting/          # Dataset splitting domain logic
-│   ├── measurement/        # Morphology measurement logic
-│   ├── synthesis/          # Image synthesis domain logic
-│   ├── doctor/             # Environment diagnostics
-│   ├── sam3/               # SAM3 model implementation
-│   └── lama/               # LaMa inpainting implementation
-├── tests/                  # Test files
-├── data/                   # Data directory (large files ignored)
-├── models/                 # Model weights (large files ignored)
-├── docs/                   # Plans, specs, change summaries
-├── requirements.txt        # Python dependencies
-└── setup.py                # Package setup
-```
-
-## Model Requirements
-
-### SAM3 Model
-
-For SAM3-based methods (`sam3`, `sam3-bbox`), download the checkpoint from Hugging Face and pass it with `--sam3-checkpoint`.
-
-Download link: https://huggingface.co/facebook/sam3
-
-### LaMa Model
-
-For `--repair-strategy lama`, place the Big-LaMa model at:
-```
-models/big-lama/
-├── config.yaml
-└── models/best.ckpt
-```
-
-Download link: https://github.com/advimman/lama
-
-### AutoMM / timm (classify commands)
-
-Install the `classify` extras — AutoMM will download backbone weights automatically on first use.
-
-Supported timm backbones include:
-- `convnextv2_femto` (default, lightweight)
-- `convnextv2_tiny`, `convnextv2_small`, `convnextv2_base`
-- `resnet18`, `resnet50`, `resnet101`
-- `efficientnet_b0` through `efficientnet_b7`
-- `vit_small_patch16_224`, `vit_base_patch16_224`
-- And many more from [timm models](https://huggingface.co/timm)
-
-## Usage
-
-### Directory Input and Output Policy
-
-This policy applies to every directory-oriented command (`extract-frames`,
-`segment`, `measure`, `synthesize`, `clean`, `augment`) and to directory
-discovery in `classify embed`, `classify cam`, and `classify predict`:
-
-- Directory-oriented commands scan recursively by default; there is no
-  `--recursive` flag and no flatten option.
-- Ordinary file outputs mirror each input file's path relative to the input
-  root. For example, `clean --input-dir in --out-dir out` turns
-  `in/beetles/a.jpg` into `out/cleaned_images/beetles/a.jpg`, so two files with
-  the same basename in different subdirectories never overwrite each other.
-- `segment` is the deliberate exception: it does not mirror input paths. It
-  flattens every image into `images/` and encodes each input-relative path into
-  a unique flat sample ID (readable stem plus a short path digest, e.g.
-  `a__4cabcf2b3682`), with per-format annotation directories alongside.
-  Standard dataset layouts (for example Pascal VOC `JPEGImages/`) are produced
-  by a later conversion/split step, not directly by `segment`.
-- CSV-driven commands (`split-csv`, and classification commands given
-  `--input-csv`) remain CSV-driven and are outside this directory policy.
-
-Recommended workflow command order:
-
-1. `extract-frames`
-2. `segment`
-3. `measure` (optional, from segmentation masks)
-4. `synthesize`
-5. `clean`
-6. `augment`
-7. `split-csv`
-8. `classify`
-
-### Segment Command
-
-Segment insects from images using multiple methods (`sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox`). Optionally generates annotations in COCO, VOC, or YOLO format.
-
-#### Basic Usage
+Then clean the frames and build a split for classification:
 
 ```bash
-# SAM3 with alpha channel (transparent background)
-entomokit segment \
-    --input-dir images/clean_insects/ \
-    --out-dir outputs/insects_clean/ \
-    --sam3-checkpoint models/sam3.pt \
-    --segmentation-method sam3 \
-    --device auto
-
-# With COCO annotations
-entomokit segment \
-    --input-dir images/clean_insects/ \
-    --out-dir outputs/insects_clean/ \
-    --sam3-checkpoint models/sam3.pt \
-    --segmentation-method sam3 \
-    --annotation-format coco
-
-# With YOLO annotations and xyxy bbox format
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --segmentation-method otsu \
-    --annotation-format yolo \
-    --coco-bbox-format xyxy
-
-# SAM3-bbox mode (crops to bounding box)
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --sam3-checkpoint models/sam3.pt \
-    --segmentation-method sam3-bbox \
-    --padding-ratio 0.1
-
-# Fast bbox crop mode with Otsu (RGB crop output)
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --segmentation-method otsu-bbox \
-    --padding-ratio 0.1
-
-# Fast bbox crop mode with GrabCut (RGB crop output)
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --segmentation-method grabcut-bbox \
-    --padding-ratio 0.1
-
-# With LaMa repair for filling holes
-entomokit segment \
-    --input-dir images/ --out-dir outputs/ \
-    --sam3-checkpoint models/sam3.pt \
-    --repair-strategy lama \
-    --lama-model models/big-lama/
+entomokit clean --input-dir ./frames --out-dir ./cleaned
+entomokit split-csv --raw-image-csv ./labels.csv --out-dir ./datasets
 ```
 
-#### Key Parameters
+<a id="doctor-command"></a>
+## Doctor Command
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--input-dir` | Input directory | Required |
-| `--out-dir` | Output directory | Required |
-| `--segmentation-method` | `sam3`, `sam3-bbox`, `otsu`, `otsu-bbox`, `grabcut`, `grabcut-bbox` | `sam3` |
-| `--sam3-checkpoint` | SAM3 checkpoint path | Required for sam3/sam3-bbox |
-| `--hint` | Text prompt for SAM3 grounding | `insect` |
-| `--device` | `auto`, `cpu`, `cuda`, `mps` | `auto` |
-| `--confidence-threshold` | Minimum confidence score for masks | `0.0` |
-| `--padding-ratio` | Padding ratio for bounding box | `0.0` |
-| `--repair-strategy` | `opencv`, `sam3-fill`, `black-mask`, `lama` | None |
-| `--lama-model` | LaMa model directory | None |
-| `--annotation-format` | `coco`, `voc`, `yolo` | None |
-| `--coco-bbox-format` | `xywh`, `xyxy` | `xywh` |
-| `--threads` | Concurrent image workers for Otsu/GrabCut (default: 8); SAM3 remains serial | 8 |
-| `--resume` | Skip inputs whose exact single-mask output already exists; multi-mask inputs are always re-processed | No |
-| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
-
-**Output structure (COCO example):**
-```
-output_dir/
-├── annotations.coco.json     # COCO annotations
-├── images/                   # Segmented images
-│   ├── image_01.png
-│   └── ...
-└── repaired_images/          # (if repair-strategy enabled)
-```
-
-**YOLO/VOC layout:**
-```
-output_dir/
-├── images/
-├── labels/                   # YOLO: .txt per image + data.yaml
-└── Annotations/              # VOC: .xml per image + ImageSets/Main/
-```
-
-`segment` scans `--input-dir` recursively and writes every image to `images/`
-(annotations go to the per-format directories shown above); it does not mirror
-input paths. Each input-relative path is encoded into a unique,
-filesystem-safe sample ID (readable stem plus a short path digest, e.g.
-`a__4cabcf2b3682`), which is used for image files, VOC XML, YOLO TXT,
-SegmentationClass masks, COCO file names, and `ImageSets/Main/default.txt`.
-Two same-named images in different subdirectories therefore produce distinct
-samples, and `--resume` checks that exact mapped artifact instead of a
-basename glob. Only an exact single-mask output is trusted as completion:
-multi-mask inputs (`{sample_id}_01.png`, `_02`, ...) are always re-processed so
-a partially written set is never skipped. With `--resume`, the unified
-`annotations.coco.json` is merged with the previous file, so skipped samples
-keep their annotations. Standard dataset layouts (for
-example Pascal VOC `JPEGImages/`) are produced by a later conversion/split
-step, not by `segment`.
-
-Images for which the segmentation method returns no masks are logged with
-their full source path and listed in `out-dir/no_mask_images.txt` for later
-verification.
-
----
-
-### Measure Command
-
-Measure morphology metrics from segmentation masks. The implementation aligns metric definitions with scikit-image `regionprops` to keep results consistent.
-
-```bash
-# Measure mask directory and export CSV reports
-entomokit measure \
-    --mask-dir data/segment/images \
-    --out-dir runs/measure
-
-# With calibrated scale (micrometers per pixel)
-entomokit measure \
-    --mask-dir data/segment/images \
-    --out-dir runs/measure \
-    --pixel-size-um 2.5
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--mask-dir`, `-i` | Input mask directory (scanned recursively) | Required |
-| `--out-dir`, `-o` | Output directory | Required |
-| `--pixel-size-um` | Pixel size in micrometers per pixel (`um/px`) | None |
-| `--verbose`, `-v` | Enable verbose logging | No |
-| `--resume` | Append measurements for new masks; skip masks already in `metrics.csv` | No |
-| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
-
-**Outputs:**
-```
-output_dir/
-├── metrics.csv              # Per-image metrics and warning reasons
-├── metrics_summary.csv      # Aggregated statistics + warning counts
-└── metric_definitions.csv   # Metric definitions (zh/en + units/formulas)
-```
-
-`file_name` in `metrics.csv` is the mask path relative to `--mask-dir` (for
-example `beetles/a.png`), which keeps nested same-named masks distinct and is
-the key used by `--resume`.
-
-**Caution on body length/width:**
-- `body_length_*` and `body_width_*` are geometry-based estimates from binary masks, not direct anatomical measurements.
-- They can be biased when masks include appendages (antennae/legs), are clipped by image borders, or contain merged/fragmented body regions.
-- Always check `quality_flag` and `warn_reason` (for example `touching_border`, `too_many_branches`) before downstream analysis.
-
----
-
-### Extract Frames Command
-
-Extract frames from video files. Accepts a directory or a single video file path.
-
-```bash
-# Extract from directory every 1 second
-entomokit extract-frames --input-dir videos/ --out-dir frames/
-
-# Extract from single video, time range 5s–30s
-entomokit extract-frames --input-dir video.mp4 --out-dir frames/ \
-    --start-time 5.0 --end-time 30.0
-
-# Custom interval and format
-entomokit extract-frames --input-dir videos/ --out-dir frames/ \
-    --interval 500 --out-image-format png
-
-# Limit frames per video
-entomokit extract-frames --input-dir videos/ --out-dir frames/ \
-    --max-frames 100
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--input-dir` | Video directory or single video file | Required |
-| `--out-dir` | Output directory | Required |
-| `--interval` | Interval in milliseconds | 1000 |
-| `--start-time` | Start time in seconds | 0 |
-| `--end-time` | End time in seconds | video end |
-| `--out-image-format` | jpg/png/tif | jpg |
-| `--threads` | Parallel threads | 8 |
-| `--max-frames` | Max frames per video | All |
-| `--resume` | Skip frames already present in `--out-dir` (continue previous run) | No |
-| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
-
-**Supported video formats**: mp4, mov, avi, mkv, webm, flv, m4v, mpeg, mpg, wmv, 3gp, ts
-
-Directory input is scanned recursively. Frames are written under
-`out-dir/<video's input-relative directory>/<video-stem>/`, so same-named
-videos in different subdirectories get separate frame trees; `--resume`
-checks the mapped frame directory.
-
----
-
-### Clean Command
-
-Clean and deduplicate images with consistent naming.
-
-```bash
-# Basic (MD5 dedup); scans recursively and mirrors subdirectories
-entomokit clean --input-dir images/raw/ --out-dir images/cleaned/
-
-# Perceptual hash dedup
-entomokit clean --input-dir images/ --out-dir cleaned/ \
-    --dedup-mode phash --phash-threshold 5
-
-# Resize to shorter side 512px and pad to a square with the border median color
-entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
-    --out-short-size 512 --out-image-format png --pad-color median
-
-# Keep original size and EXIF data
-entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
-    --out-short-size -1 --keep-exif
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--input-dir` | Input directory (scanned recursively) | Required |
-| `--out-dir` | Output directory | Required |
-| `--out-short-size` | Shorter side size (-1 = original) | 512 |
-| `--pad-color` | Pad non-square images to a square: `none`, `median`, `black`, `white` (`median` uses the median RGB of the border pixels) | none |
-| `--dedup-mode` | `none`, `md5`, `phash`, `md5+phash` (runs md5 first, then phash on survivors) | md5 |
-| `--phash-threshold` | Phash similarity threshold | 5 |
-| `--out-image-format` | jpg/png/tif | jpg |
-| `--keep-exif` | Preserve EXIF metadata | No |
-| `--threads` | Parallel threads | 12 |
-| `--resume` | Continue into a non-empty `--out-dir` without error | No |
-| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
-
-Cleaned images are written under `out-dir/cleaned_images/<input-relative path>`.
-Resize happens first, then padding.
-
----
-
-### Augment Command
-
-Augment images with albumentations presets or a custom policy file.
-
-```bash
-# Light preset (default), one output per input image
-entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/
-
-# Heavy preset and 3 copies per image
-entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
-    --preset heavy --multiply 3 --seed 123
-
-# Custom policy JSON
-entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
-    --policy configs/augment_policy.json
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--input-dir` | Input image directory. Accepted formats: jpg/jpeg, png, bmp, tif/tiff, webp. Output preserves input format (no conversion — use `entomokit clean --out-image-format` to convert). | Required |
-| `--out-dir` | Output directory | Required |
-| `--preset` | `light`, `medium`, `heavy`, `safe-for-small-dataset` | `light` |
-| `--policy` | Custom policy JSON path (exclusive with `--preset`) | None |
-| `--seed` | Random seed for reproducibility | 42 |
-| `--multiply` | Augmented copies per input image | 1 |
-| `--resume` | Skip source images already augmented in `--out-dir` | No |
-| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
-
-**Output:**
-```
-output_dir/
-├── images/               # mirrors each input's subdirectory path
-│   └── <subdir>/source_aug01.png
-└── augment_manifest.json
-```
-
-Input directories are scanned recursively. Every output keeps an
-`_augNN` suffix (even with `--multiply 1`), so the original basename is never
-overwritten. Manifest `original` and `augmented` entries are input-relative paths.
-
----
-
-### Split-CSV Command
-
-Split a labelled CSV into train / val / test files.
-
-```bash
-# Ratio split (80/10/10)
-entomokit split-csv --raw-image-csv data/images.csv \
-    --known-test-sample-ratio 0.1 --val-ratio 0.1 --out-dir datasets/
-
-# Count split with image copy
-entomokit split-csv --raw-image-csv data/images.csv --mode count \
-    --known-test-sample-count 100 --val-count 50 \
-    --copy-images --images-dir images/ --out-dir datasets/
-
-# With unknown class test split (for open-set evaluation)
-entomokit split-csv --raw-image-csv data/images.csv \
-    --unknown-test-sample-ratio 0.1 \
-    --known-test-sample-ratio 0.1 \
-    --out-dir datasets/
-
-# Filter classes with too few samples
-entomokit split-csv --raw-image-csv data/images.csv \
-    --min-count-per-class 10 \
-    --out-dir datasets/
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--raw-image-csv` | Input CSV (image, label columns) | Required |
-| `--out-dir` | Output directory | Required |
-| `--mode` | `ratio` or `count` | ratio |
-| `--val-ratio` / `--val-count` | Validation split (keep 0 when using `classify train` — AutoGluon handles internal val split automatically) | 0 |
-| `--known-test-sample-ratio` | Known-sample test ratio | 0.1 |
-| `--unknown-test-sample-ratio` | Unknown-sample test ratio | 0 |
-| `--known-test-sample-count` | Known-sample test target count (count mode) | 0 |
-| `--unknown-test-sample-count` | Unknown-sample test target count (count mode) | 0 |
-| `--min-count-per-class` | Drop classes with fewer images | 0 |
-| `--max-count-per-class` | Cap images per class | None |
-| `--copy-images` | Copy images into split subdirs | No |
-| `--images-dir` | Source images dir (for copy) | None |
-| `--seed` | Random seed | 42 |
-| `--overwrite` | Delete `--out-dir` contents and regenerate all splits | No |
-
-**Output:**
-```
-output_dir/
-├── train.csv
-├── val.csv          # if --val-ratio / --val-count specified
-├── test.known.csv
-├── test.unknown.csv # if unknown classes configured
-├── class_count/     # per-split class counts
-│   ├── class.train.count
-│   ├── class.val.count
-│   └── ...
-└── images/          # if --copy-images
-    ├── train/
-    ├── val/
-    └── test_known/
-```
-
----
-
-### Synthesize Command
-
-Composite target objects onto background images with rotation, color matching, and intelligent positioning.
-
-```bash
-# Basic synthesis
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --num-syntheses 10
-
-# With COCO annotations and rotation
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --num-syntheses 10 \
-    --annotation-output-format coco \
-    --rotate 30
-
-# With YOLO annotations
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --annotation-output-format yolo \
-    --coco-bbox-format xyxy
-
-# Avoid black regions in backgrounds
-entomokit synthesize \
-    --target-dir images/targets/ \
-    --background-dir images/backgrounds/ \
-    --out-dir outputs/synthesized/ \
-    --avoid-black-regions \
-    --color-match-strength 0.7
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--target-dir` | Target images (with alpha channel) | Required |
-| `--background-dir` | Background images | Required |
-| `--out-dir` | Output directory | Required |
-| `--num-syntheses` | Positive integer = syntheses per target; a fraction between 0 and 1 = share of targets to sample, one synthesis each | 1 |
-| `--seed` | Base random seed for target sampling and task-local synthesis randomness | 42 |
-| `--annotation-output-format` | `coco`, `voc`, `yolo` | `coco` |
-| `--coco-bbox-format` | `xywh`, `xyxy` | `xywh` |
-| `--rotate` | Max rotation degrees | 0 |
-| `--avoid-black-regions` | Skip dark background areas | No |
-| `--color-match-strength` | 0–1 color matching | 0.5 |
-| `--area-ratio-min` | Min target/background area ratio | 0.05 |
-| `--area-ratio-max` | Max target/background area ratio | 0.20 |
-| `--threads` | Parallel workers | 4 |
-| `--resume` | Skip target images already synthesised in `--out-dir` | No |
-| `--overwrite` | Delete `--out-dir` contents and start fresh | No |
-
-**Output (COCO):**
-```
-output_dir/
-├── images/                 # mirrors each target's subdirectory path
-│   └── <subdir>/target_01.png
-└── annotations.coco.json
-```
-
-Target and background directories are scanned recursively. Backgrounds are
-sampled with replacement per synthesis task, so a run with N syntheses per
-target is not capped by the number of backgrounds. A fractional
-`--num-syntheses` (for example `0.5`) deterministically selects that share of
-targets for a fixed `--seed` and produces one synthesis per selected target.
-Annotations mirror the same target-relative paths as the images. Output files
-are named `{target_stem}_{NN}`; two targets in the same directory that differ
-only by extension (for example `a.png` and `a.tif`) get a short path digest in
-the stem so neither overwrites the other. With `--resume`, the unified
-`annotations.coco.json` is merged with the previous file, so skipped targets
-keep their annotations.
-
-`--target-dir` must contain RGBA cutouts (for example mask-mode `segment`
-output: `--segmentation-method sam3`, `otsu`, or `grabcut`). Bbox-mode crop
-output (`sam3-bbox`, `otsu-bbox`, `grabcut-bbox`), repaired images, and raw
-photos are RGB and are rejected. When every target fails, the error lists the
-observed modes (for example `18 RGB`).
-
-**Output (YOLO):**
-```
-output_dir/
-├── images/
-├── labels/
-└── data.yaml
-```
-
----
-
-### Classify Commands
-
-All classification commands require the `classify` extras:
-
-```bash
-pip install -e ".[classify]"
-```
-
-#### `classify train`
-
-Train an image classifier using AutoGluon MultiModalPredictor.
-
-```bash
-entomokit classify train \
-    --train-csv data/train.csv \
-    --images-dir data/images/ \
-    --out-dir runs/exp1/ \
-    --base-model convnextv2_femto \
-    --augment medium \
-    --max-epochs 50 \
-    --learning-rate 3e-4 \
-    --device auto
-```
-
-**Resume training** (extend epoch limit from 50 to 100):
-
-```bash
-entomokit classify train \
-    --train-csv data/train.csv \
-    --images-dir data/images/ \
-    --out-dir runs/exp1/ \
-    --base-model convnextv2_femto \
-    --max-epochs 100 \
-    --resume
-```
-
-**Custom augmentation**:
-
-```bash
-# Using preset
-entomokit classify train ... --augment heavy
-
-# Using custom transforms (JSON array)
-entomokit classify train ... --augment '["random_resize_crop","color_jitter","randaug"]'
-```
-
-**With focal loss** (for imbalanced classes):
-
-```bash
-entomokit classify train \
-    --train-csv data/train.csv \
-    --images-dir data/images/ \
-    --out-dir runs/exp1/ \
-    --focal-loss \
-    --focal-loss-gamma 2.0
-```
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--train-csv` | CSV with `image` and `label` columns | Required |
-| `--images-dir` | Training images directory | Required |
-| `--out-dir` | Output directory | Required |
-| `--base-model` | timm backbone name | `convnextv2_femto` |
-| `--augment` | Preset or JSON array | `medium` |
-| `--max-epochs` | Max training epochs | 50 |
-| `--time-limit` | Time limit in hours | 1.0 |
-| `--resume` | Continue from checkpoint | No |
-| `--learning-rate` | AutoGluon `optim.lr` | `1e-4` |
-| `--weight-decay` | AutoGluon `optim.weight_decay` | `1e-3` |
-| `--warmup-steps` | AutoGluon `optim.warmup_steps` | `0.1` |
-| `--patience` | Early-stopping patience | 10 |
-| `--top-k` | Checkpoint averaging count | 3 |
-| `--focal-loss` | Enable focal loss | No |
-| `--seed` | Random seed passed to AutoMM for reproducible training | 0 |
-| `--device` | `auto/cpu/cuda/mps` | `auto` |
-| `--batch-size` | Batch size | 32 |
-| `--num-workers` | DataLoader workers | 4 |
-| `--overwrite` | Delete `--out-dir` contents and train from scratch | No |
-
-**Augmentation presets**:
-| Preset | Transforms |
-|--------|-----------|
-| `none` | resize_shorter_side, center_crop |
-| `light` | none + random_horizontal_flip |
-| `medium` | light + color_jitter + trivial_augment |
-| `heavy` | random_resize_crop, random_horizontal_flip, random_vertical_flip, color_jitter, trivial_augment, randaug |
-
----
-
-#### `classify predict`
-
-Run inference on images using AutoGluon or ONNX model.
-
-```bash
-# AutoGluon model
-entomokit classify predict \
-    --images-dir data/test/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/predict/
-
-# ONNX model
-entomokit classify predict \
-    --input-csv test.csv \
-    --onnx-model runs/onnx/model.onnx \
-    --out-dir runs/predict/
-
-# CSV image names + image root directory
-entomokit classify predict \
-    --input-csv out/split/test.known.csv \
-    --images-dir data/Epidorcus/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/predict/
-```
-
-**Input resolution rules**:
-- Provide at least one of `--input-csv` or `--images-dir`
-- If CSV `image` values are already readable paths, CSV is used directly
-- If CSV `image` values are names/relative paths, also provide `--images-dir`
-- If only `--images-dir` is given, all images in that directory are predicted
-
-Directory discovery is recursive. Discovered images are recorded as paths
-relative to `--images-dir` (for example `beetles/a.jpg`), so nested same-named
-images stay distinct. Explicit CSV paths supplied via `--input-csv` are used
-unchanged.
-
-Pass `--overwrite` to delete `--out-dir` contents and re-predict all inputs.
-
-**ONNX requirements**:
-```bash
-pip install onnxruntime
-# or
-pip install 'entomokit[classify]'
-```
-
-**ONNX output**:
-- Columns match AutoGluon output: `image`, `prediction`, `proba_<class_name>`, ...
-- `prediction` is the class name when `label_classes.json` exists next to the ONNX file, otherwise the numeric index
-
----
-
-#### `classify evaluate`
-
-Evaluate model performance on a test set.
-
-```bash
-entomokit classify evaluate \
-    --test-csv data/test.csv \
-    --images-dir data/images/ \
-    --onnx-model runs/onnx/model.onnx \
-    --out-dir runs/eval/
-```
-
-**Output metrics** (saved to `evaluations.csv`):
-- Accuracy, Balanced Accuracy
-- Precision/Recall/F1 (macro, micro, weighted)
-- Matthews Correlation Coefficient (MCC)
-- Quadratic Kappa
-- ROC-AUC (OVO, OVR)
-
-**Additional outputs**:
-- `confusion_matrix.csv` — Raw count matrix (true label rows, predicted label columns)
-- `confusion_matrix_normalized.csv` — Row-normalized confusion matrix for per-class recall diagnosis
-- `per_class_metrics.csv` — Per-class precision, recall, F1, support
-- `confusion_matrix.pdf` — Heatmap PDF when class count is small enough to stay readable
-
-Pass `--overwrite` to delete `--out-dir` contents and re-evaluate.
-
----
-
-#### `classify embed`
-
-Extract embeddings and compute quality metrics.
-
-```bash
-# Pretrained timm backbone (no training required)
-entomokit classify embed \
-    --images-dir data/images/ \
-    --base-model convnextv2_femto \
-    --label-csv data/labels.csv \
-    --visualize \
-    --out-dir runs/embed/
-
-# Fine-tuned AutoGluon backbone
-entomokit classify embed \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --label-csv data/labels.csv \
-    --out-dir runs/embed/
-```
-
-**Outputs**:
-- `embeddings.csv` — Feature vectors (feat_0, feat_1, ...); the `image` column is the path relative to `--images-dir` (for example `beetles/a.jpg`)
-- `metrics.csv` — Quality metrics
-- `umap.pdf` — UMAP visualization (with `--visualize`)
-
-`--images-dir` is scanned recursively.
-
-Pass `--overwrite` to delete `--out-dir` contents and re-extract embeddings.
-
-**Quality metrics**:
-| Metric | Description |
-|--------|-------------|
-| NMI | Normalized Mutual Information (true labels vs KMeans) |
-| ARI | Adjusted Rand Index |
-| Recall@1/5/10 | Retrieval recall at K; every query is in the denominator |
-| kNN_Acc_k1/5/20 | Cross-validated k-NN accuracy |
-| Linear_Probing_Acc | Cross-validated linear-probe accuracy |
-| Linear_Probing_Balanced_Acc | Cross-validated linear-probe balanced accuracy |
-| mAP@R | Mean Average Precision at R; queries with no non-self relevant item are excluded |
-| Purity | Cluster purity |
-| Silhouette_Score | Cosine silhouette against the true labels |
-
-**Metric contract**:
-
-- kNN and linear probing are cross-validated with `StratifiedKFold(n_splits=min(5, smallest class count), shuffle=True, random_state=42)`.
-- Clustering uses KMeans with the true class count.
-- Some metrics cannot be computed and are written as an empty CSV cell / printed as `N/A`: clustering and linear probing when a class has a single sample, `Recall@K` when fewer than `k + 1` samples exist, clustering when there are fewer distinct embeddings than classes, and silhouette when it is undefined. Read `N/A` as "not computable", never as `0`.
-- `Recall@K` and `mAP@R` keep the definitions in the table above, so a single-class label set with more than one sample still yields `1.0` (every query finds a same-label neighbour) rather than `N/A`.
-- `--label-csv` must have unique `image` values and at least one `image` value matching an image **file** name in `--images-dir`. Duplicate rows and an empty overlap are rejected before any extraction; a directory whose name looks like an image does not count.
-- `--metrics-sample-size` caps the number of rows used by **all** quality metrics (clustering, Recall@K, kNN, mAP@R, silhouette, and linear probing) — it is not specific to the linear probe — and it is the main runtime knob. `mAP@R` still ranks every query against every other row, so its neighbour-index matrix grows with the square of the sample size (~800 MB at the default 10000); lower this value when memory is tight.
-- Values are **not numerically comparable with runs produced before 0.6.2**: the CV split, the silhouette distance metric, index-based self-exclusion in Recall@K and mAP@R, and unavailable-value handling all changed. Field names are unchanged, and `Linear_Probing_Balanced_Acc` is a new column inserted after `Linear_Probing_Acc` (all later columns shift right by one — select by header name, not position).
-- These kNN/evaluation corrections shipped in `0.6.2`; `0.7.0` does not change the embedding metrics algorithm.
-
----
-
-#### `classify cam`
-
-Generate GradCAM heatmaps for model interpretability.
-
-```bash
-entomokit classify cam \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --cam-method gradcam \
-    --out-dir runs/cam/ \
-    --save-npy raw
-```
-
-**With ground-truth labels**:
-```bash
-entomokit classify cam \
-    --label-csv data/test.csv \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/cam/
-```
-
-**CAM methods**: `gradcam`, `gradcampp`, `layercam`, `scorecam`, `eigencam`, `ablationcam`
-
-**Architecture auto-detection**: Automatically detects CNN vs Transformer/ViT architecture. Swin backbones are handled as ViT-style models with the final stage block as the default CAM target. ConvNeXt backbones use the final stage block instead of its pointwise `mlp.fc2` layer, which avoids degenerate GradCAM maps.
-
-**Evaluation preprocessing**: `--eval-transform center-crop` (default) uses the model's saved deterministic validation preprocessing; the heatmap is limited to the model's center-crop field of view. `--eval-transform whole-specimen-pad` pads the image to a square with its edge-median background color before resizing, so the heatmap covers the complete specimen without aspect-ratio distortion.
-
-**Outputs**:
-- `figures/` — CAM overlay images
-- `cam_summary.csv` — Metadata
-- `arrays/` — CAM arrays (`--save-npy raw` keeps the unnormalized CAM; `--save-npy normalized` writes per-image min-max values; no arrays are written by default)
-
-`--save-npy` takes `none` (default), `raw`, or `normalized`. `raw` keeps the CAM magnitude; `normalized` writes the per-image min-max `[0, 1]` mask, which is the same normalized copy the overlay uses. Raw magnitude statistics are intended for gradient-based CAM methods under fixed settings: they are only comparable within one model, target layer, and preprocessing configuration, and `eigencam` raw values are exported for completeness but are not suitable for response-magnitude statistics. `--save-npy normalized` preserves the previous normalized semantics and is numerically equivalent within the tolerance measured during development; the overlay keeps the same display semantics, and pixel-identical output is not guaranteed.
-
-**Find target layer**:
-```bash
-entomokit classify cam \
-    --images-dir data/images/ \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --dump-model-structure \
-    --out-dir runs/cam/
-# Then check runs/cam/model_layers.txt
-```
-
-**Note**: ONNX models not supported (requires PyTorch hooks).
-
-Pass `--overwrite` to delete `--out-dir` contents and regenerate CAM visualizations.
-
----
-
-#### `classify export-onnx`
-
-Export AutoGluon model to ONNX format for deployment.
-
-```bash
-entomokit classify export-onnx \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/onnx/ \
-    --opset 17
-```
-
-**With sample image for tracing**:
-```bash
-entomokit classify export-onnx \
-    --model-dir runs/exp1/AutogluonModels/convnextv2_femto \
-    --out-dir runs/onnx/ \
-    --sample-image data/sample.jpg
-```
-
-**Outputs**:
-- `model.onnx` — ONNX model file
-- `label_classes.json` — Class label mapping
-
-Pass `--overwrite` to delete `--out-dir` contents and re-export the ONNX model.
-
----
-
-### Doctor Command
-
-Diagnose environment and dependency readiness.
+Diagnose environment and dependency readiness:
 
 ```bash
 entomokit doctor
 ```
 
-The report includes:
-- Python and available devices (`cpu`, `cuda`, `mps`)
-- Key package versions and status (ok/missing/outdated)
-- Install/upgrade recommendations (including `autogluon.multimodal>=1.5.0`)
+The report includes Python and available devices (`cpu`, `cuda`, `mps`), key
+package versions and status (ok/missing/outdated), and install or upgrade
+recommendations. The `classify` extra requires `autogluon.multimodal>=1.5.0`, while
+`doctor` currently accepts `1.4.0` as up to date and only recommends an upgrade below
+that. `doctor` has no user-settable options.
 
----
+<a id="update-command"></a>
+## Update Command
 
-### Update Command
-
-Check whether a newer version is available on GitHub (via `version.txt` on the main branch) and optionally install it. Works for all users regardless of local git history.
+Check whether a newer version is available on GitHub (via `version.txt` on the
+`main` branch) and optionally install it. Works for all users regardless of local
+git history.
 
 ```bash
 entomokit update           # check and prompt
@@ -1084,133 +120,139 @@ entomokit update --yes     # install without prompt
 ```
 
 | Parameter | Description | Default |
-|-----------|-------------|---------|
+|---|---|---|
 | `--check` | Only show version info; do not install | No |
-| `--yes`, `-y` | Skip confirmation prompt | No |
+| `--yes`, `-y` | Skip the confirmation prompt | No |
 
----
+<a id="completion-command"></a>
+## Shell Completion
 
+Generate static completion scripts for bash, zsh or fish:
+
+| Shell | Option | Install path |
+|---|---|---|
+| `bash` | `--install` | `~/.local/share/bash-completion/completions/entomokit` |
+| `zsh` | `--install` | `~/.zfunc/_entomokit` |
+| `fish` | `--install` | `~/.config/fish/completions/entomokit.fish` |
+
+Without `--install` the script is printed to stdout. For zsh, ensure your shell
+config includes `fpath=(~/.zfunc $fpath)` and initialises completions with
+`autoload -Uz compinit && compinit`.
+
+<a id="directory-policy"></a>
+## Directory Input and Output Policy
+
+This policy applies to the directory-oriented commands (`extract-frames`, `segment`,
+`measure`, `synthesize`, `clean`, `augment`) and to directory discovery in
+`classify embed`, `classify cam` and `classify predict`:
+
+- Directory-oriented commands scan recursively by default; there is no
+  `--recursive` flag and no flatten option.
+- Ordinary file outputs mirror each input's directory structure relative to the input
+  root, but some commands also rewrite the file name: `clean` normalises the stem,
+  guarantees a unique name inside a directory and applies `--out-image-format`, and
+  `augment` appends `_augN`, zero-padded to the width of `--multiply` (`_aug1` for
+  1–9, `_aug01` for 10–99, `_aug001` for 100). Example: `clean --input-dir in --out-dir out` turns
+  `in/beetles/a.png` into `out/cleaned_images/beetles/a.jpg` with the default format,
+  so same-named files in different subdirectories stay distinct while a second `a.tif`
+  in the same directory becomes `a_1.jpg`.
+- `segment` is the deliberate exception: it does not mirror input paths. It
+  flattens every image into `images/` and encodes each input-relative path into a
+  unique flat sample ID (readable stem plus a short path digest, for example
+  `a__4cabcf2b3682`), with per-format annotation directories alongside. Standard
+  dataset layouts (for example Pascal VOC `JPEGImages/`) are produced by a later
+  conversion or split step, not directly by `segment`.
+- CSV-driven commands (`split-csv`, and classification commands given
+  `--input-csv`) stay CSV-driven and are outside this policy.
+- A non-empty `--out-dir` stops with an error. Commands that expose `--resume`
+  accept it to continue; commands without `--resume` require `--overwrite` to
+  start fresh.
+
+<a id="common-behaviours"></a>
 ## Common Behaviours
 
-### Logging
+- **Logging**: commands with an output directory write `log.txt` there: `extract-frames`,
+  `segment`, `measure`, `synthesize`, `clean`, `augment`, `split-csv`,
+  `classify predict`, `classify evaluate`, `classify cam` and `classify export-onnx`
+  write `out-dir/log.txt`, while `classify train` and `classify embed` write
+  `out-dir/logs/log.txt`. `doctor`, `update` and `completion` write no log file.
+  The header records `EntomoKit version:` (for example `0.7.1`), `Commit:`, the full
+  command line, a timestamp and all parameter values, followed by the runtime
+  output. `--verbose` enables debug-level logging.
+- **Interruption**: `measure` and `augment` stop at the next image boundary — they
+  check the shutdown flag before each image. `segment` also checks between images,
+  but only its serial path stops after the current image: the parallel Otsu/GrabCut
+  path has already queued its tasks, so those finish first. `synthesize` checks the
+  flag only while preparing tasks, so the tasks already prepared run to completion.
+  `extract-frames`, `clean` and `split-csv` install the handler but never read the
+  flag: the first `Ctrl+C` only sets it and prints a notice, a second `Ctrl+C` exits,
+  and no partial-result guarantee is documented. Classification and operational
+  commands install no handler.
+- **Device selection**: `--device auto` prefers CUDA, then MPS, then CPU.
+- **Version**: `entomokit --version` (or `-v`) prints the installed version.
 
-All commands save `log.txt` to the output directory. The header begins with:
-- `EntomoKit version:` (for example `0.7.0`)
-- `Commit:` (short Git commit id, or `unknown` outside a checkout)
-- Full command line
-- Timestamp
-- All parameter values
-- Runtime output
-
-Use `--verbose` for debug-level output.
-
-### Graceful Shutdown
-
-Press `Ctrl+C` — the current image finishes before exiting; partial results are saved.
-
-### Device Selection
-
-`--device auto` chooses automatically:
-1. CUDA (if available)
-2. MPS / Apple Silicon (if available)
-3. CPU (fallback)
-
-### Shell Completion
-
-Install shell completion for entomokit:
-
-```bash
-entomokit completion bash --install
-entomokit completion zsh --install
-entomokit completion fish --install
-```
-
-Supported shells: bash, zsh, fish
-
-### Version
-
-Show installed version:
-
-```bash
-entomokit --version
-entomokit -v
-```
-
----
-
+<a id="assistant-integration"></a>
 ## AI Assistant Integration (Skills)
 
-EntomoKit includes a skill for AI assistants (OpenCode, Claude Code, Codex, etc.) that provides guided workflow orchestration for users unfamiliar with command-line tools.
-
-### What is `entomokit-workflow` Skill?
-
-The `entomokit-workflow` skill enables AI assistants to:
-- Guide users through the complete dataset preparation pipeline
-- Validate parameters and CSV files before execution
-- Provide step-by-step assistance for each command
-- Handle errors and suggest fixes
-- Resume workflows after interruption
-
-### Installation
-
-**OpenCode:**
+The `entomokit-workflow` skill lets AI assistants (OpenCode, Claude Code, Codex and
+similar tools) guide non-CLI users through the pipeline: parameter validation
+against the runtime CLI schema before every run, step-by-step confirmation, error
+recovery with suggested fixes, workflow resume after interruption, and an optional
+teaching/demo mode.
 
 ```bash
-mkdir -p ~/.config/opencode/skills
-cp -r skills/entomokit-workflow ~/.config/opencode/skills/
+mkdir -p ~/.config/opencode/skills && cp -r skills/entomokit-workflow ~/.config/opencode/skills/
+mkdir -p ~/.claude/skills && cp -r skills/entomokit-workflow ~/.claude/skills/
+mkdir -p ~/.codex/skills && cp -r skills/entomokit-workflow ~/.codex/skills/
 ```
 
-**Claude Code:**
+Detailed skill rules live in [SKILL.md](skills/entomokit-workflow/SKILL.md), and
+worked conversation examples are in the
+[teaching playbook](skills/entomokit-workflow/references/teaching-playbook.md#user-conversation-examples).
+The skill's guided approval policy is not a CLI requirement: every command below
+works the same without the skill.
 
-```bash
-mkdir -p ~/.claude/skills
-cp -r skills/entomokit-workflow ~/.claude/skills/
-```
+## Commands
 
-**Codex:**
+Functional commands have a complete reference in `docs/commands/`; `doctor`,
+`update` and `completion` are documented above.
 
-```bash
-mkdir -p ~/.codex/skills
-cp -r skills/entomokit-workflow ~/.codex/skills/
-```
+| Command | Description | Reference |
+|---|---|---|
+| `extract-frames` | Extract frames from video files | [reference](docs/commands/extract-frames.md) |
+| `segment` | Segment insects from images (SAM3, Otsu, GrabCut, bbox crop modes) | [reference](docs/commands/segment.md) |
+| `measure` | Measure morphology metrics from segmentation masks | [reference](docs/commands/measure.md) |
+| `synthesize` | Composite insects onto background images | [reference](docs/commands/synthesize.md) |
+| `clean` | Clean, resize and deduplicate images | [reference](docs/commands/clean.md) |
+| `augment` | Augment images with presets or a custom albumentations policy | [reference](docs/commands/augment.md) |
+| `split-csv` | Split datasets into train/val/test CSVs | [reference](docs/commands/split-csv.md) |
+| `doctor` | Diagnose environment and missing dependencies | [reference](#doctor-command) |
+| `update` | Check for updates and optionally install the latest GitHub version | [reference](#update-command) |
+| `completion` | Generate shell completion scripts | [reference](#completion-command) |
 
-**Other CLI tools:** Copy the `skills/entomokit-workflow` directory to your tool's skills directory.
+<a id="classify-commands"></a>
+### Classification Commands
 
-### Usage
+These require the `classify` extra.
 
-Once installed, start a conversation with your AI assistant:
+| Command | Description | Reference |
+|---|---|---|
+| `classify train` | Train an AutoMM image classifier | [reference](docs/commands/classify-train.md) |
+| `classify predict` | Run inference (AutoGluon or ONNX) | [reference](docs/commands/classify-predict.md) |
+| `classify evaluate` | Evaluate model performance and export overall + per-class diagnostics | [reference](docs/commands/classify-evaluate.md) |
+| `classify embed` | Extract embeddings + UMAP + quality metrics | [reference](docs/commands/classify-embed.md) |
+| `classify cam` | Generate GradCAM heatmaps | [reference](docs/commands/classify-cam.md) |
+| `classify export-onnx` | Export a model to ONNX format | [reference](docs/commands/classify-export-onnx.md) |
 
-**Example 1 - Data cleaning and classification:**
-```
-I need to use entomokit-workflow skill to clean images in data/Epidorcus and train a classification model.
-```
+## Project Layout
 
-**Example 2 - Complete pipeline:**
-```
-Use entomokit-workflow skill to process data/my_insects: clean images, split dataset, and train a convnextv2_femto classifier.
-```
-
-**Example 3 - Learning and demo:**
-```
-I want to learn entomokit commands through entomokit-workflow skill. Can you give me a teaching demo?
-```
-
-The AI will guide you through each phase, confirm parameters, and summarize results.
-
-### Skill Features
-
-| Feature | Description |
-|---------|-------------|
-| Parameter Validation | Validates all parameters against CLI schema before execution |
-| CSV Teaching | Helps generate and validate `image,label` CSV files |
-| Error Recovery | Maps errors to repair actions |
-| Demo Mode | Optional teaching flows with repository sample data |
-
----
+The CLI package lives in `entomokit/`, the domain logic in `src/`; the module
+boundaries and architecture constraints are described in the
+[master design](docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md).
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License — see the LICENSE file for details.
 
 ## Contact
 

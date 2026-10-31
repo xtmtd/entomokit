@@ -54,9 +54,25 @@ entomokit segment --input-dir images/ --out-dir out/ \
 可选。默认 `auto`。可选值：`auto`、`cpu`、`cuda`、`mps`。推理使用的设备；`auto`
 自动选择可用设备。
 
+### `--sam3-confidence-threshold`
+
+可选。默认 `0.5`。范围 `0..1`。SAM3 模型置信度阈值：score 小于或等于该值的 mask 会在
+SAM3 processor 内被丢弃。仅 `sam3`/`sam3-bbox` 使用；Otsu 与 GrabCut 忽略。
+
+### `--post-confidence-threshold`
+
+可选。默认 `0.0`。范围 `0..1`。mask 返回后应用的 EntomoKit 后置过滤；`0.0` 关闭。
+对 SAM3，有效过滤为 `max(model, post)`。post 严格位于零与模型阈值之间时是 no-op，
+并记录 warning。Otsu/GrabCut 的 score 恒为 `1.0`，因此该过滤在 `0..1` 内对它们没有
+实际效果。
+
 ### `--confidence-threshold`
 
-可选。默认 `0.0`。接受掩码的最低置信度；`0.0` 表示不过滤。
+可选。默认 `0.0`。范围 `0..1`。`--post-confidence-threshold` 的弃用别名。post 保持
+`0.0` 且 legacy 值大于零时使用 legacy，并记录 info；两个都非零且不同时
+`--post-confidence-threshold` 优先，并记录 warning。显式
+`--post-confidence-threshold 0.0` 不能覆盖非零 legacy。该别名仍被接受并出现在
+`--help` 中，但生成的 shell 补全会省略它。
 
 ### `--padding-ratio`
 
@@ -166,6 +182,11 @@ out_dir/
 `segmentation` 为 polygon 坐标数组（`[x1,y1,x2,y2,...]`）。对于 `-bbox` 方法，
 `area` 为**边界框面积**（`w × h`），`segmentation` 为空。
 
+COCO 标注（unified 与 separate）还会写入每个 mask 的 `score`：SAM3 使用模型
+score，Otsu/GrabCut 写入 `1.0`。0.7.2 之前生成的标注在 `--resume` 下不会补
+`score`，因为已有图片会被跳过；需要重新生成时使用 `--overwrite`。VOC XML 与 YOLO TXT 没有标准 score 字段，
+不会包含该字段。
+
 ## 示例
 
 使用 GrabCut bbox 裁剪并输出 `xyxy` 约定的 COCO 标注：
@@ -204,8 +225,17 @@ entomokit segment --input-dir images/ --out-dir out/ --resume
   直接报错退出；`--overwrite` 会在运行前删除已有内容。
 - `--annotation-format` 决定编码方式；是否写出边界框与分割数据由
   `--segmentation-method` 决定。
+- SAM3 的模型阈值与后置过滤是分开的。把 `--sam3-confidence-threshold` 降到 `0.5`
+  以下会让 SAM3 更宽松；后置过滤只能删除 mask，不能恢复。
+- no-mask 警告同时写出两个阈值，例如
+  `No masks passed the effective confidence threshold (sam3=0.2, post=0.0)`。
+- Otsu/GrabCut 的 score 恒为 `1.0`；`--sam3-confidence-threshold` 对它们无效，
+  非默认值会记录为 ignored。
 
 ## 版本注记
 
+- `0.7.2`：新增 `--sam3-confidence-threshold`（SAM3 模型阈值）与
+  `--post-confidence-threshold`（后置过滤）；`--confidence-threshold` 改为弃用别名。
+  默认 SAM3 阈值不再警告，no-mask 原因同时写出两个阈值。
 - `0.7.0`：`--input-dir` 改为递归扫描，图像平铺到 `images/` 并使用编码后的样本 ID
   而非镜像路径；`--resume` 会合并上一次运行的 unified COCO 标注。

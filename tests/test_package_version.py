@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-EXPECTED_VERSION = "0.7.1"
+EXPECTED_VERSION = "0.7.2"
 
 
 def test_setup_version_matches_target() -> None:

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import csv
+import json
 import sys
 import types
 import warnings
 from pathlib import Path
+
+import pytest
 
 
 def _install_fake_autogluon(monkeypatch):
@@ -559,3 +562,295 @@ def test_train_cli_parser_seed_default_and_forwarding(tmp_path, monkeypatch) -> 
     train_cli.run(args)
 
     assert captured["seed"] == 123
+
+
+def _write_csv_rows(path: Path, rows: list[tuple[str, str]]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["image", "label"])
+        writer.writeheader()
+        for image, label in rows:
+            writer.writerow({"image": image, "label": label})
+
+
+def _prepare_validation_fixture(tmp_path: Path):
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for name in ("sample_0.jpg", "sample_1.jpg", "val_0.jpg"):
+        (images_dir / name).write_bytes(b"fake")
+    train_csv = tmp_path / "train.csv"
+    _write_train_csv(train_csv)
+    return images_dir, train_csv
+
+
+def test_train_passes_tuning_data_when_val_csv_supplied(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "moth")])
+
+    trainer_mod.train(
+        **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+    )
+
+    fit_call = fake_predictor.fit_calls[-1]
+    assert "tuning_data" in fit_call
+    assert len(fit_call["tuning_data"]) == 1
+    assert str(fit_call["tuning_data"].iloc[0]["image"]).endswith("val_0.jpg")
+
+
+def test_train_omits_tuning_data_without_val_csv(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+
+    trainer_mod.train(**_train_kwargs(tmp_path, images_dir, train_csv))
+
+    assert "tuning_data" not in fake_predictor.fit_calls[-1]
+
+
+def test_train_rejects_train_val_path_overlap(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("./sample_0.jpg", "moth")])
+
+    with pytest.raises(ValueError, match="overlap"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+    assert fake_predictor.fit_calls == []
+
+
+def test_train_rejects_duplicate_validation_rows(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "moth"), ("./val_0.jpg", "moth")])
+
+    with pytest.raises(ValueError, match="duplicate"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+
+
+def test_train_rejects_missing_validation_images(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("missing.jpg", "moth")])
+
+    with pytest.raises(ValueError, match="missing images"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+
+
+def test_train_rejects_empty_validation_csv(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [])
+
+    with pytest.raises(ValueError, match="empty"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+
+
+def test_train_rejects_validation_labels_absent_from_training(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "spider")])
+
+    with pytest.raises(ValueError, match="labels absent"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+
+
+def test_train_logs_validation_csv_path_hash_and_count(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "moth")])
+
+    trainer_mod.train(
+        **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+    )
+
+    text = (tmp_path / "out" / "logs" / "log.txt").read_text(encoding="utf-8")
+    assert "Validation CSV:" in text
+    assert "Validation CSV SHA256:" in text
+    assert "Validation images: 1" in text
+    assert "Overlap check: passed" in text
+
+
+def test_train_logs_validation_before_fit(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "moth")])
+    original_fit = fake_predictor.fit
+
+    def assert_logged_fit(self, **kwargs):
+        text = (tmp_path / "out" / "logs" / "log.txt").read_text(encoding="utf-8")
+        assert "Validation CSV:" in text
+        return original_fit(self, **kwargs)
+
+    monkeypatch.setattr(fake_predictor, "fit", assert_logged_fit)
+    trainer_mod.train(
+        **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+    )
+
+
+def test_train_rejects_blank_validation_image(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("", "moth")])
+
+    with pytest.raises(ValueError, match="blank image"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+    assert fake_predictor.fit_calls == []
+
+
+def test_train_rejects_blank_validation_label(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "")])
+
+    with pytest.raises(ValueError, match="blank label"):
+        trainer_mod.train(
+            **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+        )
+    assert fake_predictor.fit_calls == []
+
+
+def test_train_maps_validation_labels_to_training_representation(
+    monkeypatch, tmp_path
+):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for name in ("sample_0.jpg", "sample_1.jpg", "val_0.jpg"):
+        (images_dir / name).write_bytes(b"fake")
+    train_csv = tmp_path / "train.csv"
+    _write_csv_rows(train_csv, [("sample_0.jpg", "1"), ("sample_1.jpg", "moth")])
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(val_csv, [("val_0.jpg", "1")])
+
+    trainer_mod.train(
+        **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+    )
+
+    tuning = fake_predictor.fit_calls[-1]["tuning_data"]
+    assert tuning.iloc[0]["label"] == "1"
+    assert isinstance(tuning.iloc[0]["label"], str)
+
+
+def test_train_accepts_absolute_validation_image_paths(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir, train_csv = _prepare_validation_fixture(tmp_path)
+    val_csv = tmp_path / "val.csv"
+    _write_csv_rows(
+        val_csv, [(str(images_dir / "val_0.jpg"), "moth")]
+    )
+
+    trainer_mod.train(
+        **_train_kwargs(tmp_path, images_dir, train_csv, val_csv=val_csv)
+    )
+
+    assert "tuning_data" in fake_predictor.fit_calls[-1]
+
+
+def test_train_does_not_require_training_images_to_exist(monkeypatch, tmp_path):
+    from src.classification import trainer as trainer_mod
+
+    fake_predictor = _install_fake_autogluon(monkeypatch)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    train_csv = tmp_path / "train.csv"
+    _write_train_csv(train_csv)
+
+    trainer_mod.train(**_train_kwargs(tmp_path, images_dir, train_csv))
+
+    assert fake_predictor.fit_calls
+
+
+def test_classify_train_parser_accepts_val_csv():
+    from entomokit.main import _build_parser
+
+    args = _build_parser().parse_args(
+        [
+            "classify", "train",
+            "--train-csv", "train.csv",
+            "--val-csv", "val.csv",
+            "--images-dir", "images",
+            "--out-dir", "out",
+        ]
+    )
+    assert args.val_csv == "val.csv"
+
+
+def test_backfill_model_assets_missing_warns(tmp_path):
+    from src.classification.trainer import _backfill_model_assets
+
+    with pytest.warns(UserWarning, match="not found"):
+        _backfill_model_assets(tmp_path / "model", object(), 1.0)
+
+
+def test_backfill_model_assets_metadata(tmp_path):
+    from src.classification.trainer import _backfill_model_assets
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    assets_path = model_dir / "assets.json"
+    assets_path.write_text(
+        json.dumps(
+            {"best_score": None, "total_train_time": None, "keep": "yes"}
+        ),
+        encoding="utf-8",
+    )
+
+    class Learner:
+        _best_score = 0.93
+        _total_train_time = None
+
+    class Predictor:
+        _learner = Learner()
+
+    _backfill_model_assets(model_dir, Predictor(), 12.5)
+
+    assets = json.loads(assets_path.read_text(encoding="utf-8"))
+    assert assets["best_score"] == 0.93
+    assert assets["total_train_time"] == 12.5
+    assert assets["keep"] == "yes"

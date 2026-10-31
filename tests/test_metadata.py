@@ -418,3 +418,20 @@ def test_coco_metadata_manager_to_yolo_txt_multiple_objects():
     
     lines = yolo.strip().split('\n')
     assert len(lines) == 2
+
+
+def test_coco_metadata_manager_add_annotation_with_score():
+    manager = COCOMetadataManager()
+    img_id = manager.add_image("test.png", 100, 100)
+    cat_id = manager.add_category("insect")
+
+    manager.add_annotation(
+        image_id=img_id,
+        category_id=cat_id,
+        bbox=[10, 20, 50, 30],
+        segmentation=[[10, 20, 60, 20, 60, 50, 10, 50]],
+        area=1500.0,
+        score=0.87,
+    )
+
+    assert manager.annotations[0]["score"] == 0.87

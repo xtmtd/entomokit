@@ -58,10 +58,29 @@ Optional. Default `insect`. Text prompt used for SAM3 grounding.
 Optional. Default `auto`. Choices: `auto`, `cpu`, `cuda`, `mps`. Device used for
 inference; `auto` selects the best available device.
 
+### `--sam3-confidence-threshold`
+
+Optional. Default `0.5`. Range `0..1`. SAM3 model confidence threshold: masks with
+scores at or below this value are discarded inside the SAM3 processor. Only
+`sam3`/`sam3-bbox` use it; Otsu and GrabCut ignore it.
+
+### `--post-confidence-threshold`
+
+Optional. Default `0.0`. Range `0..1`. EntomoKit post-filter applied after masks
+are returned; `0.0` disables it. For SAM3 the effective filter is
+`max(model, post)`. A post value strictly between zero and the model threshold is
+a no-op and logs a warning. Otsu/GrabCut always report score `1.0`, so this filter
+has no practical effect for them in `0..1`.
+
 ### `--confidence-threshold`
 
-Optional. Default `0.0`. Minimum confidence score for accepted masks; `0.0`
-disables filtering.
+Optional. Default `0.0`. Range `0..1`. Deprecated alias for
+`--post-confidence-threshold`. When the post option is left at `0.0` and this
+legacy value is greater than zero, the legacy value is used and an info line is
+logged; when both are non-zero and different, `--post-confidence-threshold` wins
+and a warning is logged. An explicit `--post-confidence-threshold 0.0` does not
+override a non-zero legacy value. The alias remains accepted and visible in
+`--help`, but generated shell completion omits it.
 
 ### `--padding-ratio`
 
@@ -186,6 +205,12 @@ For methods without the `-bbox` suffix, `area` is the mask pixel area
 (`[x1,y1,x2,y2,...]`). For `-bbox` methods, `area` is the bounding-box area
 (`w × h`) and `segmentation` is empty.
 
+COCO annotations (unified and separate) also include a per-mask `score`:
+SAM3 writes the model score, while Otsu/GrabCut write `1.0`. VOC XML and YOLO
+TXT have no standard score field and do not include it. Annotations produced
+before 0.7.2 do not gain `score` under `--resume`, because existing images are
+skipped; rerun with `--overwrite` to regenerate them.
+
 ## Examples
 
 GrabCut bbox crops with COCO annotations in `xyxy` convention:
@@ -228,9 +253,20 @@ entomokit segment --input-dir images/ --out-dir out/ --resume
   contents before the run.
 - `--annotation-format` selects the encoding; whether bbox and segmentation data
   are written is decided by `--segmentation-method`.
+- SAM3's model threshold is separate from the post-filter. Lowering
+  `--sam3-confidence-threshold` below `0.5` makes SAM3 more permissive; the post
+  filter can only remove masks, not restore them.
+- The no-mask warning names both thresholds, for example
+  `No masks passed the effective confidence threshold (sam3=0.2, post=0.0)`.
+- Otsu/GrabCut scores are always `1.0`; `--sam3-confidence-threshold` is ignored
+  and a non-default value is logged as ignored.
 
 ## Version Notes
 
+- `0.7.2`: added `--sam3-confidence-threshold` (SAM3 model threshold) and
+  `--post-confidence-threshold` (post-filter); `--confidence-threshold` is now a
+  deprecated alias. Default SAM3 thresholds no longer warn, and the no-mask
+  reason names both thresholds.
 - `0.7.0`: `--input-dir` is scanned recursively, images are flattened into
   `images/` with encoded sample IDs instead of mirrored paths, and `--resume`
   merges the unified COCO annotations of the previous run.

@@ -87,10 +87,10 @@ out_dir/
   basename is never overwritten. The index is zero-padded to the width of
   `--multiply`: `1`–`9` give `_aug1`…`_aug9`, `10`–`99` give `_aug01`…`_aug99`, and
   `100` gives `_aug001`.
-- `augment_manifest.json` records `preset`, `multiply`, `seed`, `images_processed` and
-  `augmented_images_created`. Per-image `original`/`augmented` path records are built in
-  memory but are **not** serialised into the file today, so do not rely on the manifest
-  as a path mapping.
+- `augment_manifest.json` records `preset`, `multiply`, `seed`, `images_processed`,
+  `augmented_images_created`, and a `files` array. Each `files` entry has
+  `original` (relative to `--input-dir`), `augmented` (relative to
+  `out-dir/images/`), and `copy_index`.
 - The output format always matches the input format; `augment` never converts.
 
 ## Examples
@@ -130,5 +130,7 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 
 ## Version Notes
 
+- `0.7.2`: `augment_manifest.json` now includes a per-copy `files` array with
+  `original`, `augmented`, and `copy_index`.
 - `0.7.0`: `augment` scans `--input-dir` recursively and mirrors each input's
   relative path under `images/` instead of flattening the outputs.

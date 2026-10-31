@@ -146,6 +146,7 @@ def run_augment(
         "seed": seed,
         "images_processed": processed_count,
         "augmented_images_created": len(augmented_images),
+        "files": augmented_images,
     }
     (dst / "augment_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False),

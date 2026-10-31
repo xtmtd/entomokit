@@ -104,6 +104,8 @@ class SegmentationProcessor:
         annotation_format: str = "coco",
         coco_output_mode: str = "unified",
         coco_bbox_format: str = "xywh",
+        sam3_confidence_threshold: float = 0.5,
+        post_confidence_threshold: Optional[float] = None,
     ):
         """
         Initialize segmentation processor.
@@ -120,13 +122,50 @@ class SegmentationProcessor:
             annotation_format: Output format for annotations ("coco", "voc", "yolo")
             coco_output_mode: COCO output mode ("unified" or "separate") — kept for backward compat
             coco_bbox_format: COCO bbox format ("xywh" or "xyxy")
+            sam3_confidence_threshold: SAM3 model threshold in [0, 1]
+            post_confidence_threshold: post-filter threshold in [0, 1]; None falls
+                back to confidence_threshold for backward compatibility
         """
+        if not 0 <= sam3_confidence_threshold <= 1:
+            raise ValueError(
+                "sam3_confidence_threshold must be in [0, 1], "
+                f"got {sam3_confidence_threshold}"
+            )
+        resolved_post = (
+            post_confidence_threshold
+            if post_confidence_threshold is not None
+            else confidence_threshold
+        )
+        if not 0 <= resolved_post <= 1:
+            raise ValueError(
+                f"post_confidence_threshold must be in [0, 1], got {resolved_post}"
+            )
         self.device = device
         self.hint = hint
         self.repair_strategy = repair_strategy
-        self.confidence_threshold = confidence_threshold
+        self.sam3_confidence_threshold = sam3_confidence_threshold
+        self.post_confidence_threshold = resolved_post
+        self.confidence_threshold = self.post_confidence_threshold  # compatibility
         self.padding_ratio = padding_ratio
         self.segmentation_method = segmentation_method
+        if (
+            self.segmentation_method in {"sam3", "sam3-bbox"}
+            and 0 < self.post_confidence_threshold < self.sam3_confidence_threshold
+        ):
+            logger.warning(
+                "Post confidence threshold %.3f is below the SAM3 model threshold "
+                "%.3f and has no additional effect.",
+                self.post_confidence_threshold,
+                self.sam3_confidence_threshold,
+            )
+        if (
+            self.segmentation_method not in {"sam3", "sam3-bbox"}
+            and self.sam3_confidence_threshold != 0.5
+        ):
+            logger.warning(
+                "--sam3-confidence-threshold is ignored for %s.",
+                self.segmentation_method,
+            )
         self.annotation_format = annotation_format.lower()
         self.coco_output_mode = coco_output_mode.lower()
         self.coco_bbox_format = coco_bbox_format
@@ -162,7 +201,11 @@ class SegmentationProcessor:
                     f"Please provide a valid checkpoint path or download from "
                     f"https://github.com/SysCV/sam-hq"
                 )
-            self.sam_wrapper = SAM3Wrapper(sam3_checkpoint, device=device)
+            self.sam_wrapper = SAM3Wrapper(
+                sam3_checkpoint,
+                device=device,
+                confidence_threshold=self.sam3_confidence_threshold,
+            )
         else:
             self.sam_wrapper = None
 
@@ -349,12 +392,13 @@ class SegmentationProcessor:
         filtered_masks = []
         filtered_scores = []
         for mask, score in zip(masks, scores):
-            if score >= self.confidence_threshold:
+            if score >= self.post_confidence_threshold:
                 filtered_masks.append(mask)
                 filtered_scores.append(score)
             else:
                 logger.debug(
-                    f"Filtering mask with score {score:.3f} < {self.confidence_threshold}"
+                    f"Filtering mask with score {score:.3f} < "
+                    f"{self.post_confidence_threshold}"
                 )
 
         return filtered_masks, filtered_scores
@@ -440,10 +484,19 @@ class SegmentationProcessor:
 
         if len(filtered_masks) == 0:
             source = original_path or base_name
-            if self.confidence_threshold > 0:
+            if self.segmentation_method in {"sam3", "sam3-bbox"} and (
+                self.sam3_confidence_threshold > 0
+                or self.post_confidence_threshold > 0
+            ):
+                reason = (
+                    "No masks passed the effective confidence threshold "
+                    f"(sam3={self.sam3_confidence_threshold}, "
+                    f"post={self.post_confidence_threshold})"
+                )
+            elif self.post_confidence_threshold > 0:
                 reason = (
                     f"No masks passed confidence threshold "
-                    f"({self.confidence_threshold})"
+                    f"({self.post_confidence_threshold})"
                 )
             else:
                 reason = f"No masks returned by {self.segmentation_method}"
@@ -595,6 +648,7 @@ class SegmentationProcessor:
                     if include_segmentation_annotations
                     else None,
                     area=annotation_area,
+                    score=score,
                 )
 
             # VOC/YOLO mode: accumulate annotations for this input image
@@ -695,7 +749,7 @@ class SegmentationProcessor:
                 file_name=metadata_image_filename, width=orig_width, height=orig_height
             )
             # Add an annotation for each mask
-            for mask in filtered_masks:
+            for mask, score in zip(filtered_masks, filtered_scores):
                 mb = mask_to_bbox(mask)
                 mp = mask_to_polygon(mask) if include_segmentation_annotations else None
                 if include_segmentation_annotations:
@@ -708,6 +762,7 @@ class SegmentationProcessor:
                     bbox=list(mb),
                     segmentation=mp,
                     area=ma,
+                    score=score,
                 )
 
         # Apply combined repair if enabled (after processing all masks)

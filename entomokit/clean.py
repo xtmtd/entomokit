@@ -9,6 +9,17 @@ from pathlib import Path
 from entomokit.help_style import RichHelpFormatter, style_parser, with_examples
 
 
+def _positive_int(value: str) -> int:
+    ival = int(value)
+    if ival <= 0:
+        raise argparse.ArgumentTypeError(f"invalid positive int value: {value!r}")
+    return ival
+
+
+_positive_int._value_type = "int"  # type: ignore[attr-defined]
+_positive_int.__name__ = "int"
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "clean",
@@ -18,6 +29,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             [
                 "entomokit clean --input-dir ./raw --out-dir ./cleaned",
                 "entomokit clean --input-dir ./raw --out-dir ./cleaned --dedup-mode phash --phash-threshold 5",
+                "entomokit clean --input-dir ./raw --out-dir ./cleaned --dry-run",
             ],
         ),
         formatter_class=RichHelpFormatter,
@@ -39,9 +51,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--threads",
-        type=int,
+        type=_positive_int,
         default=12,
-        help="Number of worker threads for image processing.",
+        help="Number of worker threads for hashing and writing images.",
     )
     p.add_argument(
         "--keep-exif",
@@ -82,6 +94,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Delete --out-dir contents and start fresh.",
     )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Write decision reports without creating cleaned_images/ or writing "
+            "images. Requires an empty --out-dir or --resume; a later real run "
+            "needs --resume."
+        ),
+    )
     p.set_defaults(func=run)
 
 
@@ -103,9 +124,29 @@ def run(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    if args.dry_run and args.overwrite:
+        print(
+            "Error: --dry-run cannot be combined with --overwrite.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if (
+        args.dry_run
+        and out_dir.exists()
+        and any(out_dir.iterdir())
+        and not args.resume
+    ):
+        print(
+            "Error: --dry-run requires an empty --out-dir or --resume.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     check_output_dir(out_dir, args.resume, args.overwrite)
     images_subdir = out_dir / "cleaned_images"
-    images_subdir.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        images_subdir.mkdir(parents=True, exist_ok=True)
     save_log(out_dir, args)
 
     cleaner = ImageCleaner(
@@ -118,13 +159,30 @@ def run(args: argparse.Namespace) -> None:
         threads=args.threads,
         keep_exif=args.keep_exif,
         pad_color=args.pad_color,
+        dry_run=args.dry_run,
+        resume=args.resume,
     )
 
     log_path = str(out_dir / "log.txt")
     results = cleaner.process_directory(log_path=log_path)
 
-    total = results["processed"] + results.get("skipped", 0)
-    print(f"Done. Processed {total} images, {results['errors']} errors.")
-    if results.get("skipped"):
-        print(f"  (skipped {results['skipped']} duplicate images)")
-    print(f"Cleaned images saved to: {images_subdir}")
+    print(
+        "Done. input={}, retained={}, dropped={}, existing={}, errors={}.".format(
+            results["total"],
+            results["retained"],
+            results["dropped"],
+            results["existing"],
+            results["errors"],
+        )
+    )
+    if results.get("existing"):
+        print(f"  (matched {results['existing']} existing outputs)")
+    if results.get("retained"):
+        verb = "would write" if args.dry_run else "wrote"
+        noun = "image" if results["retained"] == 1 else "images"
+        print(f"  ({verb} {results['retained']} new {noun})")
+    print(f"Reports saved to: {out_dir}")
+    print(f"  {results['reports']['filter_decisions']}")
+    print(f"  {results['reports']['clean_manifest']}")
+    if not args.dry_run:
+        print(f"Cleaned images saved to: {images_subdir}")

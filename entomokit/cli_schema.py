@@ -78,6 +78,9 @@ def _action_schema(action: argparse.Action) -> dict[str, object]:
 
 
 def _infer_value_type(action: argparse.Action) -> str:
+    declared = getattr(action.type, "_value_type", None)
+    if declared is not None:
+        return str(declared)
     if isinstance(action, (argparse._StoreTrueAction, argparse._StoreFalseAction)):
         return "bool"
     if action.type in (int, float, str):

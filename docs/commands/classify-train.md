@@ -19,6 +19,16 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
 
 Required. No default. CSV with `image` and `label` columns.
 
+### `--val-csv`
+
+Optional. No default. CSV with `image` and `label` columns used as AutoMM's
+`tuning_data`. Its `image` paths resolve against the same `--images-dir` as
+`--train-csv`; absolute paths are accepted. Supplying it disables AutoMM's
+internal random validation split. The validation CSV must be non-empty, reference
+existing images, contain no duplicate image rows, contain no labels absent from
+training, and must not overlap the training image paths after resolution and case
+normalization.
+
 ### `--images-dir`
 
 Required. No default. Directory containing the training images.
@@ -126,7 +136,11 @@ Optional. Default `0`. Random seed passed to AutoMM for reproducible training.
   (https://huggingface.co/timm).
 - Training reads the labelled training split only; when the data comes from
   `entomokit split-csv`, keep `--val-ratio`/`--val-count` at `0` because AutoGluon
-  performs its own internal train/validation split.
+  performs its own internal train/validation split. If `--val-csv` is supplied,
+  that internal split is disabled and the CSV is passed as `tuning_data`.
+- Training-side CSV loading stays lenient: the `image` and `label` columns and path
+  resolution are required, but missing training images are not rejected. The
+  stricter existence/duplicate/label/overlap checks apply to `--val-csv` only.
 
 ## Outputs
 
@@ -135,6 +149,13 @@ Optional. Default `0`. Random seed passed to AutoMM for reproducible training.
   `classify embed`, `classify cam` and `classify export-onnx`.
 - Run logs are written to `out-dir/logs/log.txt`, and the resolved training table is
   saved to `out-dir/train.processed.csv`.
+- After `fit()`, `assets.json` in the model directory is refreshed with
+  `best_score` and `total_train_time`, so a reloaded model's `fit_summary()` is
+  not left with null metadata.
+- When `--val-csv` is supplied, `logs/log.txt` records the validation CSV path, its
+  file-level SHA256, the validation image count, and `Overlap check: passed`
+  before `fit()` is called. When it is omitted, the log records
+  `Validation: AutoMM internal random split (no --val-csv)`.
 
 ## Examples
 
@@ -175,4 +196,7 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
 
 ## Version Notes
 
+- `0.7.2`: added `--val-csv` to pass an explicit validation set to AutoMM as
+  `tuning_data`, with path-overlap, duplicate-row, empty-file, missing-image, and
+  unknown-label checks plus validation CSV provenance in `logs/log.txt`.
 - `0.7.0`: `--seed` was added for reproducible AutoMM training.

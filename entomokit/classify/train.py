@@ -27,6 +27,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--train-csv", required=True, help="CSV with 'image' and 'label' columns."
     )
     p.add_argument(
+        "--val-csv",
+        default=None,
+        help=(
+            "Optional validation CSV with 'image' and 'label' columns. Image paths "
+            "are resolved against --images-dir; supplying this disables AutoMM's "
+            "internal random validation split."
+        ),
+    )
+    p.add_argument(
         "--images-dir", required=True, help="Directory containing training images."
     )
     p.add_argument(
@@ -169,6 +178,7 @@ def run(args: argparse.Namespace) -> None:
 
     model_dir = train(
         train_csv=Path(args.train_csv),
+        val_csv=Path(args.val_csv) if args.val_csv else None,
         images_dir=Path(args.images_dir),
         base_model=args.base_model,
         out_dir=out_dir,

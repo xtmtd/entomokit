@@ -490,3 +490,52 @@ def test_coco_non_bbox_method_keeps_segmentation_and_mask_area():
             ann = data["annotations"][0]
             assert ann["segmentation"]
             assert ann["area"] == 1600
+            assert ann["score"] == 0.95
+
+
+def test_coco_separate_annotation_includes_score():
+    import json
+    import tempfile
+    from pathlib import Path
+
+    import cv2
+    import numpy as np
+    from unittest.mock import MagicMock, patch
+
+    from src.segmentation.processor import SegmentationProcessor
+
+    with (
+        patch("src.segmentation.processor.SAM3Wrapper") as mock_sam,
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        mock_wrapper = MagicMock()
+        mock_mask = np.zeros((50, 50), dtype=np.uint8)
+        mock_mask[10:40, 10:40] = 255
+        mock_wrapper.predict_with_scores.return_value = {
+            "masks": [mock_mask],
+            "scores": [0.83],
+        }
+        mock_sam.return_value = mock_wrapper
+
+        processor = SegmentationProcessor(
+            "fake.pt",
+            device="cpu",
+            segmentation_method="sam3",
+            annotation_format="coco",
+            coco_output_mode="separate",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_dir = Path(tmpdir) / "in"
+            output_dir = Path(tmpdir) / "out"
+            input_dir.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(
+                str(input_dir / "sample.jpg"),
+                np.ones((50, 50, 3), dtype=np.uint8) * 255,
+            )
+            processor.process_directory(input_dir=input_dir, output_dir=output_dir)
+
+            json_files = list((output_dir / "annotations").glob("*.json"))
+            assert len(json_files) == 1
+            data = json.loads(json_files[0].read_text())
+            assert data["annotations"][0]["score"] == 0.83

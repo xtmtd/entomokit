@@ -22,6 +22,7 @@ def _segment_args(**kw):
         padding_ratio=0.0, repair_strategy=None, device="auto",
         annotation_format=None, coco_bbox_format="xywh",
         lama_mask_dilate=0, out_image_format="png",
+        sam3_confidence_threshold=0.5, post_confidence_threshold=0.0,
     )
     d.update(kw)
     return argparse.Namespace(**d)
@@ -107,6 +108,7 @@ def _clean_args(**kw):
         out_short_size=None, out_image_format="jpg", threads=4,
         keep_exif=False, dedup_mode="phash", phash_threshold=5,
         pad_color="none", verbose=False, resume=False, overwrite=False,
+        dry_run=False,
     )
     d.update(kw)
     return argparse.Namespace(**d)
@@ -254,6 +256,7 @@ def _train_args(**kw):
         num_workers=4,
         num_threads=0,
         seed=0,
+        val_csv=None,
     )
     d.update(kw)
     return argparse.Namespace(**d)

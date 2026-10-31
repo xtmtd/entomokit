@@ -74,7 +74,7 @@ def test_clean_results_count_invalid_images_as_errors(tmp_path):
     assert results["errors"] == 1
 
 
-def test_phash_reservation_is_removed_when_saving_fails(tmp_path, monkeypatch):
+def test_write_failure_promotes_next_group_member(tmp_path, monkeypatch):
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "output"
     input_dir.mkdir()
@@ -98,3 +98,4 @@ def test_phash_reservation_is_removed_when_saving_fails(tmp_path, monkeypatch):
 
     assert results["errors"] == 1
     assert results["processed"] == 1
+    assert not (output_dir / "one.jpg").exists()

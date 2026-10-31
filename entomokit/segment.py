@@ -18,6 +18,23 @@ def _positive_int(value: str) -> int:
     return ival
 
 
+_positive_int._value_type = "int"  # type: ignore[attr-defined]
+_positive_int.__name__ = "int"
+
+
+def _unit_float(value: str) -> float:
+    fval = float(value)
+    if not 0.0 <= fval <= 1.0:
+        raise argparse.ArgumentTypeError(
+            f"value must be in [0, 1]: {value!r}"
+        )
+    return fval
+
+
+_unit_float._value_type = "float"  # type: ignore[attr-defined]
+_unit_float.__name__ = "float"
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "segment",
@@ -61,11 +78,36 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         choices=["auto", "cpu", "cuda", "mps"],
         help="Device for inference.",
     )
-    p.add_argument(
+    deprecated_confidence = p.add_argument(
         "--confidence-threshold",
-        type=float,
+        type=_unit_float,
         default=0.0,
-        help="Minimum confidence score for masks (0.0 = no filtering).",
+        help=(
+            "Deprecated alias for --post-confidence-threshold (default 0.0). "
+            "Post-filter minimum score; 0.0 disables the post-filter."
+        ),
+    )
+    # Keep the deprecated alias accepted and visible in --help, but omit it from
+    # generated shell completion so users are steered to the new option.
+    deprecated_confidence._deprecated = True
+    p.add_argument(
+        "--sam3-confidence-threshold",
+        type=_unit_float,
+        default=0.5,
+        help=(
+            "SAM3 model confidence threshold (default 0.5, range 0..1). "
+            "Only affects sam3/sam3-bbox; ignored by Otsu/GrabCut."
+        ),
+    )
+    p.add_argument(
+        "--post-confidence-threshold",
+        type=_unit_float,
+        default=0.0,
+        help=(
+            "Post-filter minimum mask score (default 0.0, range 0..1). "
+            "Applied after masks are returned; no additional effect on "
+            "Otsu/GrabCut, whose scores are always 1.0."
+        ),
     )
     p.add_argument(
         "--padding-ratio",
@@ -179,6 +221,37 @@ def run(args: argparse.Namespace) -> None:
     logger = setup_logging(out_dir, verbose=args.verbose)
     save_log(out_dir, args)
 
+    post_threshold = args.post_confidence_threshold
+    legacy_threshold = args.confidence_threshold
+    if post_threshold == 0.0 and legacy_threshold > 0.0:
+        post_threshold = legacy_threshold
+        logger.info(
+            "--post-confidence-threshold is 0.0 (unset); using deprecated "
+            "--confidence-threshold=%s",
+            legacy_threshold,
+        )
+    elif (
+        post_threshold > 0.0
+        and legacy_threshold > 0.0
+        and post_threshold != legacy_threshold
+    ):
+        logger.warning(
+            "--post-confidence-threshold wins over deprecated "
+            "--confidence-threshold."
+        )
+
+    logger.info("Segmentation method: %s", args.segmentation_method)
+    logger.info("SAM3 confidence threshold: %s", args.sam3_confidence_threshold)
+    logger.info("Post confidence threshold: %s", post_threshold)
+    if (
+        args.segmentation_method not in {"sam3", "sam3-bbox"}
+        and args.sam3_confidence_threshold != 0.5
+    ):
+        logger.info(
+            "--sam3-confidence-threshold is ignored for %s.",
+            args.segmentation_method,
+        )
+
     # annotation_format: CLI uses None to mean "no annotations"; processor defaults to "coco"
     # Pass the value directly; if None, processor will still run but we avoid enabling annotations.
     annotation_format = args.annotation_format or "coco"
@@ -194,6 +267,8 @@ def run(args: argparse.Namespace) -> None:
         hint=args.hint,
         repair_strategy=args.repair_strategy,
         confidence_threshold=args.confidence_threshold,
+        sam3_confidence_threshold=args.sam3_confidence_threshold,
+        post_confidence_threshold=post_threshold,
         padding_ratio=args.padding_ratio,
         segmentation_method=args.segmentation_method,
         lama_model=args.lama_model,

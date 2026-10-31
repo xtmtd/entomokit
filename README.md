@@ -176,7 +176,7 @@ This policy applies to the directory-oriented commands (`extract-frames`, `segme
   `classify predict`, `classify evaluate`, `classify cam` and `classify export-onnx`
   write `out-dir/log.txt`, while `classify train` and `classify embed` write
   `out-dir/logs/log.txt`. `doctor`, `update` and `completion` write no log file.
-  The header records `EntomoKit version:` (for example `0.7.1`), `Commit:`, the full
+  The header records `EntomoKit version:` (for example `0.7.2`), `Commit:`, the full
   command line, a timestamp and all parameter values, followed by the runtime
   output. `--verbose` enables debug-level logging.
 - **Interruption**: `measure` and `augment` stop at the next image boundary — they
@@ -243,6 +243,31 @@ These require the `classify` extra.
 | `classify embed` | Extract embeddings + UMAP + quality metrics | [reference](docs/commands/classify-embed.md) |
 | `classify cam` | Generate GradCAM heatmaps | [reference](docs/commands/classify-cam.md) |
 | `classify export-onnx` | Export a model to ONNX format | [reference](docs/commands/classify-export-onnx.md) |
+
+## Parameter Changes in 0.7.2
+
+The command references contain the full parameter contracts; this table summarizes
+the options added or changed in this release.
+
+### `clean`
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--dry-run` | Write decision reports without creating `cleaned_images/` or writing images; requires an empty `--out-dir` or `--resume`. | No |
+
+### `segment`
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--sam3-confidence-threshold` | SAM3 model confidence threshold; only `sam3`/`sam3-bbox`, ignored by Otsu/GrabCut. | `0.5` |
+| `--post-confidence-threshold` | Post-filter after masks are returned; `0.0` disables it, with no practical effect on Otsu/GrabCut. | `0.0` |
+| `--confidence-threshold` | Deprecated alias for `--post-confidence-threshold`; hidden from shell completion. | `0.0` |
+
+### `classify train`
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--val-csv` | Explicit validation CSV; disables AutoMM's internal random split and is passed as `tuning_data`. | None |
 
 ## Project Layout
 

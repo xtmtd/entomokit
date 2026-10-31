@@ -47,6 +47,8 @@ def _parser_completion_tree() -> dict[str, dict[str, object]]:
         for action in current._actions:
             if isinstance(action, (argparse._HelpAction, argparse._SubParsersAction)):
                 continue
+            if getattr(action, "_deprecated", False):
+                continue
             if action.option_strings:
                 node["options"].extend(action.option_strings)
                 choices = _action_completion_choices(action)

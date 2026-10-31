@@ -24,6 +24,8 @@
 - Typical defaults: `--out-short-size 512`, `--out-image-format jpg`, `--dedup-mode md5`.
 - `clean` always scans `--input-dir` recursively and mirrors each input's relative path under `cleaned_images/`; there is no `--recursive` or flatten flag to ask about. Nested class folders are handled automatically, and same-named files in different subdirectories never overwrite each other.
 - `--pad-color` defaults to `none` (non-square images keep their resized dimensions). Choose `median` to square images while blending with the border color, `black`/`white` for a fixed fill, or leave `none` when downstream steps accept non-square inputs.
+- `clean` writes `filter_decisions.csv`, `retained_images.csv`, `dropped_images.csv`, and `clean_manifest.json` to `--out-dir`; the manifest includes a cumulative `index` used by `--resume`. Use `output_path` (not `input_path`) for per-class retention and the reports for run-to-run diffs; `log.txt` is human-readable but not the only record.
+- `--dry-run` writes the reports without creating `cleaned_images/` or writing images. A later real run into the same `--out-dir` needs `--resume`.
 - Non-empty `--out-dir` requires explicit `--resume` (continue) or `--overwrite` (fresh start); default exits with an error.
 
 ## segment
@@ -57,6 +59,7 @@
   - filename first two words,
   - mapping table.
 - AutoMM-oriented default recommendation: generate `train + test.known`; let AutoGluon create train/val split internally.
+- If the user already has an explicit validation split, pass it to `classify train --val-csv`; that disables AutoMM's internal random split and uses the CSV as `tuning_data`.
 - If user requests explicit val set, confirm `--val-ratio`, `--known-test-classes-ratio`, and `--unknown-test-classes-ratio` before run.
 - Always state ratios in plain language before execution.
 - Non-empty `--out-dir` requires explicit `--overwrite` (fresh start); default exits with an error.

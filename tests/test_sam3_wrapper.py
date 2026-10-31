@@ -137,3 +137,24 @@ def test_sam3_wrapper_reset():
                 wrapper.reset()
                 
                 mock_predictor.reset_image.assert_called_once()
+
+
+def test_sam3_wrapper_passes_confidence_threshold_to_predictor():
+    mock_model = MagicMock()
+    with patch('src.sam3.model_builder.build_sam3_image_model') as mock_build:
+        with patch('src.sam3.build_sam.Sam3Predictor') as mock_predictor_class:
+            mock_build.return_value = mock_model
+            with patch('src.sam3_wrapper.Path') as mock_path_class:
+                mock_path_class.return_value = MockPath("fake_checkpoint.pt")
+
+                from src.sam3_wrapper import SAM3Wrapper
+
+                SAM3Wrapper(
+                    "fake_checkpoint.pt",
+                    device="cpu",
+                    confidence_threshold=0.2,
+                )
+
+    mock_predictor_class.assert_called_once_with(
+        mock_model, confidence_threshold=0.2
+    )

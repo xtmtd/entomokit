@@ -79,9 +79,9 @@ out_dir/
 - 每个输出都保留 `_augN` 后缀（即使 `--multiply 1`），因此原始文件名永远不会被覆盖。
   序号按 `--multiply` 的位数补零：`1`–`9` 为 `_aug1`…`_aug9`，`10`–`99` 为
   `_aug01`…`_aug99`，`100` 为 `_aug001`。
-- `augment_manifest.json` 记录 `preset`、`multiply`、`seed`、`images_processed` 与
-  `augmented_images_created`。逐图的 `original`/`augmented` 路径记录只在内存中构建，当前
-  **不会**写入该文件，因此不要把该清单当作路径映射使用。
+- `augment_manifest.json` 记录 `preset`、`multiply`、`seed`、`images_processed`、
+  `augmented_images_created`，以及 `files` 数组。每个 `files` 条目包含 `original`
+  （相对 `--input-dir`）、`augmented`（相对 `out-dir/images/`）与 `copy_index`。
 - 输出格式始终与输入格式一致；`augment` 不做格式转换。
 
 ## 示例
@@ -118,5 +118,7 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 
 ## 版本注记
 
+- `0.7.2`：`augment_manifest.json` 新增逐副本 `files` 数组，含 `original`、
+  `augmented` 与 `copy_index`。
 - `0.7.0`：`augment` 递归扫描 `--input-dir` 并把各输入的相对路径镜像到 `images/` 下，
   不再平铺输出。

@@ -19,6 +19,14 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
 
 必填。无默认值。包含 `image` 与 `label` 两列的 CSV。
 
+### `--val-csv`
+
+可选。无默认值。包含 `image` 与 `label` 两列的验证 CSV，作为 AutoMM 的
+`tuning_data`。其 `image` 路径相对与 `--train-csv` 相同的 `--images-dir` 解析；也
+接受绝对路径。提供它会关闭 AutoMM 内部随机验证切分。验证 CSV 必须非空、引用存在的
+图片、没有重复 image 行、没有训练集缺失的 label，并且解析与大小写归一化后不得与训练
+图像路径重叠。
+
 ### `--images-dir`
 
 必填。无默认值。训练图像所在目录。
@@ -118,6 +126,9 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
   `vit_base_patch16_224`；任何其它 timm 名称同样可用（https://huggingface.co/timm）。
 - 训练只读取带标签的训练划分；若数据来自 `entomokit split-csv`，请把
   `--val-ratio`/`--val-count` 保持为 `0`，因为 AutoGluon 会自行执行内部训练/验证划分。
+  如果提供 `--val-csv`，内部切分会被关闭，该 CSV 作为 `tuning_data` 传入。
+- 训练侧 CSV 加载保持宽松：要求 `image`、`label` 列并解析路径，但不拒绝训练集缺失图片。
+  更严格的 existence/duplicate/label/overlap 检查只适用于 `--val-csv`。
 
 ## 输出
 
@@ -125,6 +136,11 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
   `classify predict`、`classify evaluate`、`classify embed`、`classify cam` 与
   `classify export-onnx` 所需的 `--model-dir`。
 - 运行日志写入 `out-dir/logs/log.txt`，解析后的训练表保存为 `out-dir/train.processed.csv`。
+- `fit()` 结束后会回填模型目录 `assets.json` 的 `best_score` 与
+  `total_train_time`，因此重新加载模型时 `fit_summary()` 不再显示空元数据。
+- 提供 `--val-csv` 时，`logs/log.txt` 会在 `fit()` 之前记录验证 CSV 路径、文件级
+  SHA256、验证图片数和 `Overlap check: passed`。未提供时记录
+  `Validation: AutoMM internal random split (no --val-csv)`。
 
 ## 示例
 
@@ -161,4 +177,6 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
 
 ## 版本注记
 
+- `0.7.2`：新增 `--val-csv`，把显式验证集作为 `tuning_data` 传给 AutoMM；加入路径
+  重叠、重复行、空文件、缺失图片、未知 label 检查，并在 `logs/log.txt` 记录验证集来源。
 - `0.7.0`：新增 `--seed`，用于可复现的 AutoMM 训练。

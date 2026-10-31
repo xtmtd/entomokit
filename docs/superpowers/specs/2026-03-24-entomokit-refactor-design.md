@@ -186,14 +186,29 @@ clean --pad-color none|median|black|white 默认 none。
 `segment` 与 `synthesize` 都把图像写在 `images/` 下（`segment` 用编码后的扁平样本 ID，`synthesize` 按目标相对路径镜像）。注释写到各格式目录，但两个命令的 COCO 能力不同：`segment` 按 `--coco-output-mode` 写 `annotations.coco.json`（unified）或 `annotations/*.json`（separate），而 `synthesize` 接受该参数但当前只写 unified 的 `annotations.coco.json`（separate 尚未实现）。YOLO 都是 `labels/*.txt` + 输出根目录的 `data.yaml`，VOC 都是 `Annotations/*.xml`（`segment` 另写 `ImageSets/Main/default.txt`，mask 模式写 `SegmentationClass/*.png`）。标准数据集布局（例如 VOC `JPEGImages/`）由后续转换/划分步骤生成。
 
 标注语义（bbox 与 mask、`area`、polygon）与格式级行为由专项设计拥有：[Segment 注释语义设计](2026-04-13-segment-annotation-semantics-design.md)；当前参数见 [segment 参考](../../../docs/commands/segment.md) 与 [synthesize 参考](../../../docs/commands/synthesize.md)。
-### `entomokit clean` — 默认递归与填充
+### `entomokit clean` — 默认递归、填充与决策报告
 
-`clean` 始终递归扫描 `--input-dir` 并把输出写到 `out-dir/cleaned_images/` 下；不再提供 `--recursive` 或 `--flatten`。镜像的是输入文件的**父目录**，文件名会被重写（词干规范化、同目录内大小写不敏感的唯一后缀、扩展名跟 `--out-image-format`），因此不能按原名关联标签。`--pad-color` 等当前参数见 [clean 参考](../../../docs/commands/clean.md)。
+`clean` 始终递归扫描 `--input-dir` 并把输出写到 `out-dir/cleaned_images/` 下；不再提供 `--recursive` 或 `--flatten`。镜像的是输入文件的**父目录**，文件名会被重写（词干规范化、同目录内大小写不敏感的唯一后缀、扩展名跟 `--out-image-format`），因此不能按原名关联标签。
+
+去重决策与报告是跨模块不变量：哈希阶段并行，决策阶段按输入相对路径串行构建连通分组，写出阶段使用预先分配的确定性文件名。代表按 `test > val > train` 的 held-out 优先级选择，再按相对路径字典序；没有可识别 split 段时只按路径顺序。`md5+phash` 先按 MD5 分组，再对 MD5 组代表做感知哈希分组。
+
+`clean` 在 `--out-dir` 写 `filter_decisions.csv`（每个输入一行，含状态、原因、代表/匹配路径、距离、分组、像素 MD5 与 pHash）、`retained_images.csv`、`dropped_images.csv` 和 `clean_manifest.json`。`clean_manifest.json` 的 `files` 只属于本次运行，另有累积 `index`（每个已知输入一行，含 input/output/status/MD5/pHash）供 resume 使用；`files` 不是 resume 索引。`retained_images.csv` 是 input-centric，per-class retention 必须按 `output_path` 统计，`n_existing` 统计输入数而非 unique output 数。报告与最终 per-file 日志行来自同一份 decision 行；报告原子写入。`md5` 是解码像素 MD5，不是文件字节 MD5。
+
+`--dry-run` 只写报告、不创建 `cleaned_images/`、不写图片，并原样复制上一次累积 `index`。`--resume` 优先使用累积 `index` 的源哈希匹配已有输出，未匹配输入才回退到输出文件哈希；匹配输入报告为 `existing`，已有输出永不重写。子集 resume 不丢失旧 index；`dedup_mode="none"` 只按 index 的 `input_path` 匹配，没有 manifest 时不按镜像路径猜测。`--resume` 不重编码已有输出，修改 `--out-short-size`/`--out-image-format` 需要 `--overwrite`；已 split 数据中 existing 在 train、重复输入在 test 时可能保留泄漏，需要重新平衡时用 `--overwrite` 或在 split 前 clean。`clean` 永不删除输入图片；`drop` 只表示不写出。
+
+当前参数与完整列定义见 [clean 参考](../../../docs/commands/clean.md)。
 ### `entomokit segment` — 递归输入与样本 ID 编码
 
 `segment` 递归扫描输入，把所有图像平铺到 `images/` 下（不镜像输入目录），把每个输入
 相对路径编码为唯一的扁平样本 ID（可读词干 + `sha256(相对路径)[:12]`）。`--resume` 依据该样本 ID
 检查映射后的输出产物，而非按基名 glob。
+
+分割置信度分为两个独立契约：`--sam3-confidence-threshold` 传给 SAM3 模型自身的
+`Sam3Processor`，只影响 `sam3`/`sam3-bbox`；`--post-confidence-threshold` 是 mask 返回后的
+EntomoKit 后置过滤。`--confidence-threshold` 是后置过滤的弃用别名。SAM3 的有效过滤为
+`max(model, post)`；post 严格位于零与 model 之间时只警告。Otsu/GrabCut 的 score 恒为
+`1.0`，忽略 SAM3 阈值，后置过滤在 `0..1` 内无实际效果。no-mask 原因同时记录两个阈值。
+当前参数见 [segment 参考](../../../docs/commands/segment.md)。
 
 ### `entomokit extract-frames` — `--input-dir` 增强
 
@@ -206,7 +221,7 @@ clean --pad-color none|median|black|white 默认 none。
 `split-csv` 以 `--raw-image-csv` 为准，按 `ratio` 或 `count` 模式生成 `train.csv`、可选的 `val.csv`、`test.known.csv` 与可选的 `test.unknown.csv`，并写 `class_count/` 统计；`--copy-images` 时按划分把图像复制到 `images/{train,val,test_known,test_unknown}/`。完整参数与输出见 [split-csv 参考](../../../docs/commands/split-csv.md)。
 ### 5.2 `classify train`
 
-当前契约：AutoGluon MultiModalPredictor + timm 骨干是唯一训练路径；训练集来自 `--train-csv`，验证由 AutoGluon 内部完成（因此 `split-csv` 的 `--val-ratio`/`--val-count` 保持 0）；产物写入 `out-dir/AutogluonModels/<base-model>`，供 predict/evaluate/embed/cam/export-onnx 复用；`--resume` 需在同一 `--base-model` 下延长轮数上限。
+当前契约：AutoGluon MultiModalPredictor + timm 骨干是唯一训练路径；训练集来自 `--train-csv`。默认由 AutoGluon 内部完成验证切分（因此 `split-csv` 的 `--val-ratio`/`--val-count` 保持 0）；提供可选的 `--val-csv` 时，不再使用内部随机切分，而是把解析后的验证表作为 `fit(tuning_data=...)` 传入，并在 `logs/log.txt` 记录验证 CSV 路径、文件级 SHA256、图片数与 overlap 结果。验证集在 `fit()` 前检查非空、图片存在、重复行、未知 label 与训练路径重叠；训练侧仍只要求列存在与路径解析。产物写入 `out-dir/AutogluonModels/<base-model>`，供 predict/evaluate/embed/cam/export-onnx 复用；`--resume` 需在同一 `--base-model` 下延长轮数上限。
 
 当前参数、默认值与增强预设语义见 [classify train 参考](../../../docs/commands/classify-train.md)；原始实现任务见 [Phase 3 plan](../plans/2026-03-24-phase3-classify.md)（历史）。
 ### 5.3 `classify predict`

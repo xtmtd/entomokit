@@ -258,7 +258,7 @@ def test_version_flag_prints_package_version_long(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.7.1"
+    assert out.strip() == "entomokit 0.7.2"
 
 
 def test_version_flag_prints_package_version_short(
@@ -272,12 +272,12 @@ def test_version_flag_prints_package_version_short(
 
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == "entomokit 0.7.1"
+    assert out.strip() == "entomokit 0.7.2"
 
 
 def test_get_version_returns_current():
     from entomokit.main import _get_version
-    assert _get_version() == "0.7.1"
+    assert _get_version() == "0.7.2"
 
 
 def test_bash_falls_back_to_files():
@@ -300,3 +300,33 @@ def test_fish_no_global_no_files_flag():
     script = render_completion_script("fish")
     first_line = script.splitlines()[0]
     assert "-f" not in first_line
+
+
+def test_segment_completion_omits_deprecated_confidence_alias() -> None:
+    from entomokit.completion import _parser_completion_tree, render_completion_script
+
+    options = _parser_completion_tree()["segment"]["options"]
+    assert "--confidence-threshold" not in options
+    assert "--sam3-confidence-threshold" in options
+    assert "--post-confidence-threshold" in options
+
+    bash = render_completion_script("bash")
+    assert "--confidence-threshold" not in bash
+    fish = render_completion_script("fish")
+    assert "-l 'confidence-threshold'" not in fish
+    assert "-l 'sam3-confidence-threshold'" in fish
+    assert "-l 'post-confidence-threshold'" in fish
+
+
+def test_segment_help_keeps_deprecated_confidence_alias(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from entomokit.main import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["segment", "--help"])
+
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "--confidence-threshold" in out
+    assert "Deprecated alias for --post-confidence-threshold" in out

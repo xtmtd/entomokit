@@ -208,7 +208,8 @@ class COCOMetadataManager:
         segmentation: List[List[float]],
         area: float,
         scale_ratio: Optional[float] = None,
-        rotation_angle: Optional[float] = None
+        rotation_angle: Optional[float] = None,
+        score: Optional[float] = None,
     ) -> int:
         """Add annotation and return its ID.
         
@@ -220,6 +221,7 @@ class COCOMetadataManager:
             area: Area in pixels (mask pixel count for segmentation)
             scale_ratio: Optional scale ratio used for synthesis
             rotation_angle: Optional rotation angle in degrees
+            score: Optional confidence score for this annotation (COCO only)
         
         Returns:
             Annotation ID (1-indexed)
@@ -243,6 +245,8 @@ class COCOMetadataManager:
             "area": area,
             "iscrowd": 0
         }
+        if score is not None:
+            annotation["score"] = float(score)
         if scale_ratio is not None:
             annotation["scale_ratio"] = scale_ratio
         if rotation_angle is not None:

@@ -10,6 +10,12 @@ import os
 
 from src.segmentation.processor import SegmentationProcessor
 
+SAM3_CHECKPOINT = Path(
+    os.environ.get(
+        "ENTOMOKIT_SAM3_CHECKPOINT", "/Users/zf/data/coding/models/sam3.pt"
+    )
+).expanduser()
+
 
 class _DummyInpainter:
     def __init__(self):
@@ -352,7 +358,7 @@ def test_e2e_segment_real_insect_image():
     sys.path.insert(0, "src")
     pytest.importorskip("sam3", reason="SAM3 not available")
 
-    model_path = Path("/Users/zf/data/coding/models/sam3.pt")
+    model_path = SAM3_CHECKPOINT
     if not model_path.exists():
         pytest.skip(f"SAM3 checkpoint not found: {model_path}")
 
@@ -400,7 +406,7 @@ def test_e2e_segment_directory_real_images():
     sys.path.insert(0, "src")
     pytest.importorskip("sam3", reason="SAM3 not available")
 
-    model_path = Path("/Users/zf/data/coding/models/sam3.pt")
+    model_path = SAM3_CHECKPOINT
     if not model_path.exists():
         pytest.skip(f"SAM3 checkpoint not found: {model_path}")
 

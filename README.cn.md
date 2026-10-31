@@ -163,7 +163,7 @@ entomokit update --yes     # 不再询问，直接安装
   `classify evaluate`、`classify cam` 与 `classify export-onnx` 写入 `out-dir/log.txt`；
   而 `classify train` 与 `classify embed` 写入 `out-dir/logs/log.txt`。`doctor`、
   `update` 与 `completion` 不写日志文件。文件头记录 `EntomoKit version:`（例如
-  `0.7.1`）、`Commit:`、完整命令行、时间戳与所有参数值，随后是运行输出。`--verbose`
+  `0.7.2`）、`Commit:`、完整命令行、时间戳与所有参数值，随后是运行输出。`--verbose`
   启用 debug 级日志。
 - **中断处理**：`measure` 与 `augment` 会在下一张图像的边界停止（逐图之前检查关闭标志）。
   `segment` 同样在图像之间检查，但只有串行路径会在完成当前图像后停止：并发 Otsu/GrabCut
@@ -221,6 +221,30 @@ skill 的引导式确认策略不是 CLI 的前置要求：下列每个命令在
 | `classify embed` | 提取嵌入向量 + UMAP + 质量指标 | [参考](docs/commands/classify-embed.cn.md) |
 | `classify cam` | 生成 GradCAM 热力图 | [参考](docs/commands/classify-cam.cn.md) |
 | `classify export-onnx` | 导出模型为 ONNX 格式 | [参考](docs/commands/classify-export-onnx.cn.md) |
+
+## 0.7.2 参数变化
+
+完整契约以命令参考为准；下表汇总本版本新增或变更的参数。
+
+### `clean`
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--dry-run` | 只写决策报告，不创建 `cleaned_images/`、不写图片；要求 `--out-dir` 为空或传入 `--resume`。 | 否 |
+
+### `segment`
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--sam3-confidence-threshold` | SAM3 模型置信度阈值；仅 `sam3`/`sam3-bbox` 使用，Otsu/GrabCut 忽略。 | `0.5` |
+| `--post-confidence-threshold` | mask 返回后的后置过滤；`0.0` 关闭，对 Otsu/GrabCut 无实际效果。 | `0.0` |
+| `--confidence-threshold` | `--post-confidence-threshold` 的弃用别名；不出现在 shell 补全中。 | `0.0` |
+
+### `classify train`
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--val-csv` | 显式验证 CSV；关闭 AutoMM 内部随机切分，并作为 `tuning_data` 传入。 | 无 |
 
 ## 项目结构
 

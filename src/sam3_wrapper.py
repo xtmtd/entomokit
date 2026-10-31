@@ -15,7 +15,8 @@ class SAM3Wrapper:
         self,
         checkpoint_path: Union[str, Path],
         device: str = "auto",
-        model_type: str = "vit_h"
+        model_type: str = "vit_h",
+        confidence_threshold: float = 0.5,
     ):
         """
         Initialize SAM3 wrapper.
@@ -24,12 +25,20 @@ class SAM3Wrapper:
             checkpoint_path: Path to SAM3 checkpoint file
             device: Device to use ("auto", "cpu", "cuda", "mps")
             model_type: SAM3 model type (ignored for ISAT SAM3)
+            confidence_threshold: SAM3 model confidence threshold in [0, 1].
+                Masks with scores <= this value are discarded by the model.
         """
         from src.utils import get_device
-        
+
+        if not 0 <= confidence_threshold <= 1:
+            raise ValueError(
+                f"confidence_threshold must be in [0, 1], got {confidence_threshold}"
+            )
+
         self.device = get_device(device)
         self.checkpoint_path = Path(checkpoint_path)
         self.model_type = model_type
+        self.confidence_threshold = confidence_threshold
         self.model = None
         self.predictor = None
         
@@ -68,7 +77,9 @@ class SAM3Wrapper:
         )
         
         # Wrap with predictor
-        self.predictor = Sam3Predictor(self.model)
+        self.predictor = Sam3Predictor(
+            self.model, confidence_threshold=self.confidence_threshold
+        )
         
         logger.info("SAM3 model loaded successfully")
     

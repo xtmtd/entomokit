@@ -163,7 +163,7 @@ entomokit update --yes     # 不再询问，直接安装
   `classify evaluate`、`classify cam` 与 `classify export-onnx` 写入 `out-dir/log.txt`；
   而 `classify train` 与 `classify embed` 写入 `out-dir/logs/log.txt`。`doctor`、
   `update` 与 `completion` 不写日志文件。文件头记录 `EntomoKit version:`（例如
-  `0.7.2`）、`Commit:`、完整命令行、时间戳与所有参数值，随后是运行输出。`--verbose`
+  `0.8.0`）、`Commit:`、完整命令行、时间戳与所有参数值，随后是运行输出。`--verbose`
   启用 debug 级日志。
 - **中断处理**：`measure` 与 `augment` 会在下一张图像的边界停止（逐图之前检查关闭标志）。
   `segment` 同样在图像之间检查，但只有串行路径会在完成当前图像后停止：并发 Otsu/GrabCut
@@ -222,7 +222,7 @@ skill 的引导式确认策略不是 CLI 的前置要求：下列每个命令在
 | `classify cam` | 生成 GradCAM 热力图 | [参考](docs/commands/classify-cam.cn.md) |
 | `classify export-onnx` | 导出模型为 ONNX 格式 | [参考](docs/commands/classify-export-onnx.cn.md) |
 
-## 0.7.2 参数变化
+## 0.8.0 参数变化
 
 完整契约以命令参考为准；下表汇总本版本新增或变更的参数。
 

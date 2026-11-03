@@ -165,7 +165,7 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 
 ## 版本注记
 
-- `0.7.2`：去重改为确定性的连通分组，并写出 `filter_decisions.csv`、
+- `0.8.0`：去重改为确定性的连通分组，并写出 `filter_decisions.csv`、
   `retained_images.csv`、`dropped_images.csv`、带累积 resume `index` 的
   `clean_manifest.json`；新增 `--dry-run`；记录 per-file 路径与哈希；`--resume`
   优先匹配累积 index，并把匹配输入报告为 `existing`。传递分组可能比旧的成对行为

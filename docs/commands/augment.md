@@ -130,7 +130,7 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 
 ## Version Notes
 
-- `0.7.2`: `augment_manifest.json` now includes a per-copy `files` array with
+- `0.8.0`: `augment_manifest.json` now includes a per-copy `files` array with
   `original`, `augmented`, and `copy_index`.
 - `0.7.0`: `augment` scans `--input-dir` recursively and mirrors each input's
   relative path under `images/` instead of flattening the outputs.

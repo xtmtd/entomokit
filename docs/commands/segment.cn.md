@@ -183,7 +183,7 @@ out_dir/
 `area` 为**边界框面积**（`w × h`），`segmentation` 为空。
 
 COCO 标注（unified 与 separate）还会写入每个 mask 的 `score`：SAM3 使用模型
-score，Otsu/GrabCut 写入 `1.0`。0.7.2 之前生成的标注在 `--resume` 下不会补
+score，Otsu/GrabCut 写入 `1.0`。0.8.0 之前生成的标注在 `--resume` 下不会补
 `score`，因为已有图片会被跳过；需要重新生成时使用 `--overwrite`。VOC XML 与 YOLO TXT 没有标准 score 字段，
 不会包含该字段。
 
@@ -234,7 +234,7 @@ entomokit segment --input-dir images/ --out-dir out/ --resume
 
 ## 版本注记
 
-- `0.7.2`：新增 `--sam3-confidence-threshold`（SAM3 模型阈值）与
+- `0.8.0`：新增 `--sam3-confidence-threshold`（SAM3 模型阈值）与
   `--post-confidence-threshold`（后置过滤）；`--confidence-threshold` 改为弃用别名。
   默认 SAM3 阈值不再警告，no-mask 原因同时写出两个阈值。
 - `0.7.0`：`--input-dir` 改为递归扫描，图像平铺到 `images/` 并使用编码后的样本 ID

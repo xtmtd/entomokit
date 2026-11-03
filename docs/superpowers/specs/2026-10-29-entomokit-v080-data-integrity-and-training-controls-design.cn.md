@@ -1,8 +1,8 @@
-# EntomoKit v0.7.2 数据完整性与训练控制设计
+# EntomoKit v0.8.0 数据完整性与训练控制设计
 
 ## 目标
 
-发布 EntomoKit `0.7.2`，完成四项相关修正：
+发布 EntomoKit `0.8.0`，完成四项相关修正：
 
 1. `clean` 用结构化、可 diff 的报告记录每个 keep/drop 决策，而不是只有散文式日志。
 2. `clean` 去重是确定性的、基于分组的，而不是 first-thread-wins 的成对判断。
@@ -16,7 +16,7 @@
 - `clean`：带哈希的 per-input 决策报告、确定性分组去重、可选 dry-run、确定性输出命名、写失败提升与半成品清理、累积 index resume 匹配，以及 augment manifest 文件行。
 - `segment`：`--sam3-confidence-threshold`、`--post-confidence-threshold`，以及弃用别名 `--confidence-threshold`；修正默认值不应警告的问题和 no-mask 原因。
 - `classify train`：`--val-csv`、验证集检查、`tuning_data` 接线，以及在 `fit()` 之前写验证集来源日志。
-- 文档：受影响的命令文档、当前 master design、Version Notes、修正后的 workflow skill 事实说明，以及 `0.7.2` 版本声明。
+- 文档：受影响的命令文档、当前 master design、Version Notes、修正后的 workflow skill 事实说明，以及 `0.8.0` 版本声明。
 
 ## 非目标
 
@@ -314,10 +314,10 @@ COCO unified 与 separate 标注都会写入每个 mask 的 `score`：SAM3 写�
 - 不新增 changelog。
 - 每个改动命令都更新两种语言：`clean`、`segment`、`classify-train`，以及 `augment`（其 manifest 新增 `files`）。
 - 更新当前 master design（`2026-03-24-entomokit-refactor-design.md`）的架构级契约；不复制完整参数表。
-- 在 `README.md` 与 `README.cn.md` 新增简短的 `Parameter Changes in 0.7.2` / `0.7.2 参数变化` 段，用 Key Parameters 风格表格列出 `clean --dry-run`、segment 阈值与 `classify train --val-csv`。该 H2 必须位于 Commands H2 之外，保证 README 命令索引契约仍只看到命令行；命令参考仍是完整参数契约。
+- 在 `README.md` 与 `README.cn.md` 新增简短的 `Parameter Changes in 0.8.0` / `0.8.0 参数变化` 段，用 Key Parameters 风格表格列出 `clean --dry-run`、segment 阈值与 `classify train --val-csv`。该 H2 必须位于 Commands H2 之外，保证 README 命令索引契约仍只看到命令行；命令参考仍是完整参数契约。
 - 修正 `skills/entomokit-workflow/references/command-profiles.md` 中关于 `--val-csv` 和 clean 报告/dry-run 的事实性说明。不修改 workflow 策略。
 - 不编辑历史 plan 或已完成 spec。
-- 把 `version.txt`、`entomokit/_version.py`、`entomokit/main.py` fallback、`setup.py` 和版本测试设为 `0.7.2`。
+- 把 `version.txt`、`entomokit/_version.py`、`entomokit/main.py` fallback、`setup.py` 和版本测试设为 `0.8.0`。
 - 本次不修改 workflow skill 的策略。
 
 ## 兼容与迁移
@@ -328,7 +328,7 @@ COCO unified 与 separate 标注都会写入每个 mask 的 `score`：SAM3 写�
 - 现有 Otsu/GrabCut 行为保持不变。
 - 未提供 `--val-csv` 时，现有 `classify train` 行为保持不变；训练侧 CSV 宽松度不变。
 - `augment_manifest.json` 新增 `files` 数组；现有 run-level 字段保留。
-- 0.7.2 之前生成的 COCO 标注在 `--resume` 下不会补 per-mask `score`，因为已有图片被跳过；需要重新生成时使用 `--overwrite`。
+- 0.8.0 之前生成的 COCO 标注在 `--resume` 下不会补 per-mask `score`，因为已有图片被跳过；需要重新生成时使用 `--overwrite`。
 - `clean` 去重结果可能变化，因为分组是传递的而非成对；这是有意的，必须在 Version Notes 中说明。
 - `--resume` 现在优先使用累积 manifest `index`，因此 resize/转换后的输出也能被识别，且子集运行不会丢失旧 index。没有 manifest 时，MD5 输出哈希匹配仍有限，并会警告。
 - `--resume` 可能把匹配输入报告为 `existing` 而不写重复文件。
@@ -374,13 +374,13 @@ COCO unified 与 separate 标注都会写入每个 mask 的 `score`：SAM3 写�
 - 训练完成后 `assets.json` 的 `best_score` 与 `total_train_time` 非空，重新加载后 `fit_summary()` 能报告它们。
 - 两种语言文档更新后 `tests/test_docs.py` 通过。
 - 生成的 bash/zsh/fish 补全省略 `--confidence-threshold`，而 `segment --help` 仍以弃用别名记录它。
-- `README.md` 与 `README.cn.md` 含 `0.7.2` 参数变化表，且 `test_readme_command_index` 仍通过。
+- `README.md` 与 `README.cn.md` 含 `0.8.0` 参数变化表，且 `test_readme_command_index` 仍通过。
 - Python 3.9 语法复核：没有 future import 的模块中不存在 PEP 604 union。
 - 完整测试套件通过；不可用的可选后端作为阻塞项报告，不用 skip 或 xfail 隐藏。
 
 ## 风险与权衡
 
-- **O(n²) pHash 分组：** 换取严格传递语义，代价是可扩展性。`0.7.2` 接受，并在文档中说明边界。
+- **O(n²) pHash 分组：** 换取严格传递语义，代价是可扩展性。`0.8.0` 接受，并在文档中说明边界。
 - **Split-aware 代表选择：** 基于精确路径段的启发式；使用其他 split 命名的数据集会回退到路径顺序。
 - **Held-out-first 会移除训练侧重复：** 保留 test/val 副本可防泄漏，但训练集是整条样本消失，而不只是少一个重复。
 - **`--resume` 下 existing 输出总是优先：** 避免重复写出，但可能不会重新平衡 split。需要全新布局时用 `--overwrite`。
@@ -406,13 +406,13 @@ COCO unified 与 separate 标注都会写入每个 mask 的 `score`：SAM3 写�
 - **只要 post < model 就警告：** 拒绝，因为默认 `post=0.0` 会让每次 SAM3 运行都警告。仅对 `0 < post < model` 警告。
 - **用 `None` 作为 `--post-confidence-threshold` 的 CLI 默认值：** 拒绝，因为文档默认值是 `0.0`，runtime schema/参数卡会不一致。改用别名解析处理。
 - **resume 只依赖输出文件哈希：** 拒绝，因为 resize/转换可能改变像素 MD5；累积 manifest `index` 才是主要来源。
-- **单独增加 `clean_index.json`：** `0.7.2` 拒绝，以避免第五个报告工件；累积 `index` 放在 `clean_manifest.json` 内，`files` 保持 per-run。
+- **单独增加 `clean_index.json`：** `0.8.0` 拒绝，以避免第五个报告工件；累积 `index` 放在 `clean_manifest.json` 内，`files` 保持 per-run。
 - **`dedup_mode="none"` 无 manifest 时按镜像输出路径匹配：** 拒绝，因为同 stem、不同扩展名会混淆；精确 `none` resume 需要 manifest。
 
 ## 参考
 
-- 实现计划：`docs/superpowers/plans/2026-10-29-entomokit-v072-data-integrity-and-training-controls.md`
-- 中文计划：`docs/superpowers/plans/2026-10-29-entomokit-v072-data-integrity-and-training-controls.cn.md`
+- 实现计划：`docs/superpowers/plans/2026-10-29-entomokit-v080-data-integrity-and-training-controls.md`
+- 中文计划：`docs/superpowers/plans/2026-10-29-entomokit-v080-data-integrity-and-training-controls.cn.md`
 - 文档规范：`docs/superpowers/specs/2026-10-01-entomokit-documentation-conventions-design.md`
 - 当前 master design：`docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md`
 - phyloAI filter 参考：`phyloAI/phyloai/pretree/filter.py`（`retained_loci.csv`、`dropped_loci.csv`、`filter_decisions.csv`、`result.json`）

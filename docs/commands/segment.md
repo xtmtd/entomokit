@@ -208,7 +208,7 @@ For methods without the `-bbox` suffix, `area` is the mask pixel area
 COCO annotations (unified and separate) also include a per-mask `score`:
 SAM3 writes the model score, while Otsu/GrabCut write `1.0`. VOC XML and YOLO
 TXT have no standard score field and do not include it. Annotations produced
-before 0.7.2 do not gain `score` under `--resume`, because existing images are
+before 0.8.0 do not gain `score` under `--resume`, because existing images are
 skipped; rerun with `--overwrite` to regenerate them.
 
 ## Examples
@@ -263,7 +263,7 @@ entomokit segment --input-dir images/ --out-dir out/ --resume
 
 ## Version Notes
 
-- `0.7.2`: added `--sam3-confidence-threshold` (SAM3 model threshold) and
+- `0.8.0`: added `--sam3-confidence-threshold` (SAM3 model threshold) and
   `--post-confidence-threshold` (post-filter); `--confidence-threshold` is now a
   deprecated alias. Default SAM3 thresholds no longer warn, and the no-mask
   reason names both thresholds.

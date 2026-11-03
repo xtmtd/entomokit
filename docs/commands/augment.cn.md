@@ -118,7 +118,7 @@ entomokit augment --input-dir images/cleaned/ --out-dir images/augmented/ \
 
 ## 版本注记
 
-- `0.7.2`：`augment_manifest.json` 新增逐副本 `files` 数组，含 `original`、
+- `0.8.0`：`augment_manifest.json` 新增逐副本 `files` 数组，含 `original`、
   `augmented` 与 `copy_index`。
 - `0.7.0`：`augment` 递归扫描 `--input-dir` 并把各输入的相对路径镜像到 `images/` 下，
   不再平铺输出。

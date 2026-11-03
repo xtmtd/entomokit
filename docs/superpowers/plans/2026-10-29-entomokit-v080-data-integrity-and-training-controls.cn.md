@@ -1,20 +1,20 @@
-# EntomoKit v0.7.2 数据完整性与训练控制实现计划
+# EntomoKit v0.8.0 数据完整性与训练控制实现计划
 
 > **给执行代理：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans，按任务逐项执行。步骤使用复选框（`- [ ]`）跟踪。
 
-**目标：** 发布 EntomoKit `0.7.2`，交付可审计且确定性的 `clean` 去重、真正生效的 SAM3 模型置信度阈值、显式的 AutoMM 验证集输入，以及同步的中英文命令文档。
+**目标：** 发布 EntomoKit `0.8.0`，交付可审计且确定性的 `clean` 去重、真正生效的 SAM3 模型置信度阈值、显式的 AutoMM 验证集输入，以及同步的中英文命令文档。
 
 **架构：** 保持命令适配层轻薄。`clean` 改为三阶段流水线：并行计算全部输入的哈希，按输入相对路径顺序串行决定 keep/drop（使用连通分组），再按预先分配的确定性文件名并行写出。所有报告、最终 per-file 日志行和日志汇总都来自同一份最终 decision 行。`segment` 通过现有的 `SAM3Wrapper -> Sam3Predictor -> Sam3Processor` 构造链传递两个独立阈值，不修改 vendored 模型源码。`classify train` 把可选的验证 CSV 传给 AutoMM 已有的 `fit(tuning_data=...)` 参数，并在日志记录验证集来源。文档遵循 `0.7.1` 的命令文档规范。
 
 **技术栈：** Python 3.9+、argparse、pathlib、`csv`、`json`、`dataclasses`、Pillow、imagehash、NumPy、`concurrent.futures`、PyTorch/AutoGluon、pytest、Markdown。
 
-**Spec：** `docs/superpowers/specs/2026-10-29-entomokit-v072-data-integrity-and-training-controls-design.md` 是配套设计文档。plan 与 spec 一起批准、一起修订；在操作者批准这一对文档前，二者都不是实现权威。
+**Spec：** `docs/superpowers/specs/2026-10-29-entomokit-v080-data-integrity-and-training-controls-design.md` 是配套设计文档。plan 与 spec 一起批准、一起修订；在操作者批准这一对文档前，二者都不是实现权威。
 
-**状态：** `0.7.2` 实现完成；等待操作者批准提交、打标签、推送或发布。
+**状态：** `0.8.0` 实现完成并已提交；等待操作者批准推送、打标签或发布。
 
 ## 已确定决策
 
-- 发布目标严格为 `0.7.2`。
+- 发布目标严格为 `0.8.0`。
 - 四个 issue 用一份合并 plan 和一份合并 spec 覆盖；plan 与 spec 各有英文文件和同步中文文件。
 - Release notes 写入每个受影响命令文档的 `Version Notes` / `版本注记`，最新在前。不新增 changelog。
 - `clean` 采用 phyloAI 的报告文件命名约定：`retained_images.csv`、`dropped_images.csv`、`filter_decisions.csv`，以及命令级 manifest `clean_manifest.json`。这里只参考命名约定，不照搬 phyloAI 的列集合；phyloAI 写 `result.json`，而 `clean` 使用命令级 manifest。
@@ -39,7 +39,7 @@
 
 ## 全局约束
 
-- 把 `version.txt`、`entomokit/_version.py`、`entomokit/main.py` 的 fallback、`setup.py` 和版本测试统一设为 `0.7.2`。
+- 把 `version.txt`、`entomokit/_version.py`、`entomokit/main.py` 的 fallback、`setup.py` 和版本测试统一设为 `0.8.0`。
 - `clean` 永不删除输入图片。`drop` 表示“不写入 `cleaned_images/`”；只有 `--overwrite` 会删除输出目录内容。
 - `clean` 的决策不得依赖线程调度、哈希完成顺序、文件系统遍历顺序或字典插入顺序。
 - 报告中的所有输入路径都是相对 `--input-dir` 的 POSIX 路径。所有输出路径和 existing 输出引用都是相对 `--out-dir` 的 POSIX 路径。
@@ -112,7 +112,7 @@
 | 补全 | `entomokit/completion.py`、`tests/test_main_cli.py` | 从生成的 shell 补全中省略 deprecated action，但保留在 help/CLI |
 | Skill 说明 | `skills/entomokit-workflow/references/command-profiles.md` | `--val-csv` 与 clean 报告/dry-run 的事实性说明；不改 workflow 策略 |
 | Master design | `docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md` | clean 报告、segment 阈值、train 验证集的当前架构级契约 |
-| 版本 | `version.txt`、`entomokit/_version.py`、`entomokit/main.py`、`setup.py`、`tests/test_package_version.py`、`tests/test_main_cli.py`、`README.md`、`README.cn.md` | 设置并验证 `0.7.2` |
+| 版本 | `version.txt`、`entomokit/_version.py`、`entomokit/main.py`、`setup.py`、`tests/test_package_version.py`、`tests/test_main_cli.py`、`README.md`、`README.cn.md` | 设置并验证 `0.8.0` |
 
 ## 接口
 
@@ -466,7 +466,7 @@ def _write_retained(decisions, output_dir, out_short_size, out_image_format, kee
 - `--resume --dedup-mode none`：只按 `index`/`files` 的 `input_path` 匹配。没有可用 manifest 时，不得按镜像输出路径匹配；保留输入并 warn 说明精确 resume 需要 manifest。
 - 真实运行后，把本次 `retained`/`existing` 行以及有存活代表的 `dropped` 行 merge 进 `index`，同一 `input_path` 的旧行被替换。dropped 行的 index 行映射到存活代表输出，并保留 dropped 输入自己的源哈希，使传递组成员仍可 resume；有存活代表的写失败行同样处理。只移除哈希/解码错误和全组耗尽错误的行，因为它们没有可用输出或哈希。当前运行未出现的输入，其旧行在输出仍存在时保留；输出缺失则剪掉并 warning。dry-run 原样复制上一次的 `index`，不添加“本应写出”的输出。
 - `--resume` 下，当前输入按当前模式直接与累积 index/输出哈希匹配。匹配输入变成 `status="existing"`；未匹配输入进入普通分组。不得删除或重写已有输出。若一个输入匹配多个 existing 输出，按当前模式的 tie-break 选规范输出（MD5：路径；pHash：距离再路径）。
-- pHash 分组在 `0.7.2` 接受 O(n²) 两两比较；不要引入 BK-tree 或新依赖。
+- pHash 分组在 `0.8.0` 接受 O(n²) 两两比较；不要引入 BK-tree 或新依赖。
 
 - [ ] **Step 4：实现代表与匹配选择**
 
@@ -921,11 +921,11 @@ python -m pytest tests/test_classify_trainer.py tests/test_resume_flags.py -q
 - 修改：`docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md`
 - 修改：`version.txt`、`entomokit/_version.py`、`entomokit/main.py`、`setup.py`
 - 修改：`tests/test_package_version.py`、`tests/test_main_cli.py`
-- 修改：`README.md`、`README.cn.md` 的版本示例与 `0.7.2` 参数变化表
+- 修改：`README.md`、`README.cn.md` 的版本示例与 `0.8.0` 参数变化表
 
 **接口：**
 - 消费：Task 1–4 已实现的 CLI 契约。
-- 产出：同步的中英文命令文档、当前 master-design 契约、修正后的 skill 说明，以及一致的 `0.7.2` 版本。
+- 产出：同步的中英文命令文档、当前 master-design 契约、修正后的 skill 说明，以及一致的 `0.8.0` 版本。
 
 - [ ] **Step 1：更新 clean 命令文档**
 
@@ -941,7 +941,7 @@ python -m pytest tests/test_classify_trainer.py tests/test_resume_flags.py -q
 - 说明 `--resume` 不会重编码已有输出；修改 `--out-short-size`/`--out-image-format` 需要 `--overwrite`。已 split 数据中 existing 在 train、重复输入在 test 时，resume 可能保留泄漏；需要重新平衡请用 `--overwrite` 或在 split 前 clean。
 - 记录 `--dry-run` 流程：只写报告、不创建 `cleaned_images/`、非空 out-dir 需要 `--resume`、复制上一次 `index`，之后真正运行同一目录也需要 `--resume`。
 - 说明 per-file 日志行在写出结束后由最终 decision 生成。
-- 在 Version Notes 最上方加 `0.7.2` 条目，描述确定性传递分组去重、报告工件与哈希、`--dry-run`、累积 resume index，以及 `--resume` 的 existing 语义变化。
+- 在 Version Notes 最上方加 `0.8.0` 条目，描述确定性传递分组去重、报告工件与哈希、`--dry-run`、累积 resume index，以及 `--resume` 的 existing 语义变化。
 
 - [ ] **Step 2：更新 segment 命令文档**
 
@@ -954,7 +954,7 @@ python -m pytest tests/test_classify_trainer.py tests/test_resume_flags.py -q
 - 记录 Otsu/GrabCut 忽略 SAM3 阈值，且其固定 `1.0` score 使 post 过滤在 `0..1` 内无效。
 - 记录 no-mask 原因同时写出两个阈值。
 - 记录新的 COCO per-mask `score`：SAM3 写模型 score，Otsu/GrabCut 写 `1.0`，VOC/YOLO 无 score 字段；适用于 unified 与 separate COCO 输出。说明旧标注需要 `--overwrite` 才能补字段；`--resume` 会跳过已有图片。
-- 在 Version Notes 最上方加 `0.7.2` 条目。
+- 在 Version Notes 最上方加 `0.8.0` 条目。
 
 - [ ] **Step 3：更新 classify-train 命令文档**
 
@@ -968,7 +968,7 @@ python -m pytest tests/test_classify_trainer.py tests/test_resume_flags.py -q
 - 记录 `logs/log.txt` 中的验证 CSV SHA256 和图片数，且在 `fit()` 之前写入。
 - 把无条件的“AutoGluon 自行进行内部 train/validation 切分”改为条件表述。
 - 记录 `fit()` 后回填 `assets.json` 的 `best_score`/`total_train_time`，使重新加载后 `fit_summary()` 有值。
-- 在 Version Notes 最上方加 `0.7.2` 条目。
+- 在 Version Notes 最上方加 `0.8.0` 条目。
 
 - [ ] **Step 4：更新 augment manifest 文档**
 
@@ -976,9 +976,9 @@ python -m pytest tests/test_classify_trainer.py tests/test_resume_flags.py -q
 
 - 记录 manifest 新增的 `files` 数组，含 `original`、`augmented`、`copy_index`。
 - 说明 `original` 相对 `--input-dir`，`augmented` 相对 `out-dir/images/`。
-- 在 Version Notes 最上方加 `0.7.2` 条目。
+- 在 Version Notes 最上方加 `0.8.0` 条目。
 
-**README 参数表：** 在 `README.md` 与 `README.cn.md` 的 Commands 之后新增 `Parameter Changes in 0.7.2` / `0.7.2 参数变化` H2，用旧版 Key Parameters 风格（`Parameter | Description | Default`）列出：
+**README 参数表：** 在 `README.md` 与 `README.cn.md` 的 Commands 之后新增 `Parameter Changes in 0.8.0` / `0.8.0 参数变化` H2，用旧版 Key Parameters 风格（`Parameter | Description | Default`）列出：
 - `clean --dry-run`；
 - `segment --sam3-confidence-threshold`、`--post-confidence-threshold` 与弃用别名 `--confidence-threshold`；
 - `classify train --val-csv`。
@@ -1008,7 +1008,7 @@ python -m pytest tests/test_classify_trainer.py tests/test_resume_flags.py -q
 
 - [ ] **Step 7：设置发布版本**
 
-统一设置为 `0.7.2`：
+统一设置为 `0.8.0`：
 
 - `version.txt`
 - `entomokit/_version.py`
@@ -1033,7 +1033,7 @@ python -m entomokit.main classify train --help
 预期：
 
 - `tests/test_docs.py` 通过，包括两种语言的 `test_command_option_coverage`。
-- 版本输出为 `entomokit 0.7.2`。
+- 版本输出为 `entomokit 0.8.0`。
 - 每个 help 都列出新选项和弃用别名。
 
 - [ ] **Step 9：运行完整测试套件**

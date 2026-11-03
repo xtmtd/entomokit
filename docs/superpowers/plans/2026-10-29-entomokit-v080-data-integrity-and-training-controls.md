@@ -1,20 +1,20 @@
-# EntomoKit v0.7.2 Data Integrity and Training Controls Implementation Plan
+# EntomoKit v0.8.0 Data Integrity and Training Controls Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Release EntomoKit `0.7.2` with auditable deterministic `clean` deduplication, a real SAM3 model confidence threshold, explicit AutoMM validation input, and synchronized bilingual command documentation.
+**Goal:** Release EntomoKit `0.8.0` with auditable deterministic `clean` deduplication, a real SAM3 model confidence threshold, explicit AutoMM validation input, and synchronized bilingual command documentation.
 
 **Architecture:** Keep command adapters thin. `clean` becomes a three-stage pipeline: hash every input in parallel, decide keep/drop serially in input-relative path order using connected groups, then write in parallel to preassigned deterministic names. All reports, the final per-file log lines, and the log summary are emitted from the same finalized decision rows. `segment` passes two independent thresholds through the existing `SAM3Wrapper -> Sam3Predictor -> Sam3Processor` constructor chain without editing vendored model source. `classify train` passes an optional validation CSV to AutoMM's existing `fit(tuning_data=...)` parameter and records validation provenance in the log. Documentation follows the `0.7.1` command-document conventions.
 
 **Tech Stack:** Python 3.9+, argparse, pathlib, `csv`, `json`, `dataclasses`, Pillow, imagehash, NumPy, `concurrent.futures`, PyTorch/AutoGluon, pytest, Markdown.
 
-**Spec:** `docs/superpowers/specs/2026-10-29-entomokit-v072-data-integrity-and-training-controls-design.md` is the companion design document. The plan and spec are approved and revised together; neither is implementation authority until the operator approves the pair.
+**Spec:** `docs/superpowers/specs/2026-10-29-entomokit-v080-data-integrity-and-training-controls-design.md` is the companion design document. The plan and spec are approved and revised together; neither is implementation authority until the operator approves the pair.
 
-**Status:** Implementation complete for `0.7.2`; awaiting operator approval to commit, tag, push, or release.
+**Status:** Implementation complete for `0.8.0` and committed; awaiting operator approval to push, tag, or release.
 
 ## Resolved Decisions
 
-- Release target is exactly `0.7.2`.
+- Release target is exactly `0.8.0`.
 - One combined plan and one combined spec cover all four issues; each plan and spec has an English file and a synchronized Chinese file.
 - Release notes live in each affected command document's `Version Notes` / `版本注记` section, newest first. Do not add a changelog.
 - `clean` adopts the phyloAI report-file naming convention: `retained_images.csv`, `dropped_images.csv`, `filter_decisions.csv`, and a command manifest named `clean_manifest.json`. The naming convention is the reference, not the exact phyloAI column set; phyloAI writes `result.json`, while `clean` uses a command-specific manifest.
@@ -39,7 +39,7 @@
 
 ## Global Constraints
 
-- Set `version.txt`, `entomokit/_version.py`, the `entomokit/main.py` fallback, `setup.py`, and the version tests to `0.7.2`.
+- Set `version.txt`, `entomokit/_version.py`, the `entomokit/main.py` fallback, `setup.py`, and the version tests to `0.8.0`.
 - `clean` never deletes input images. `drop` means "not written to `cleaned_images/`"; `--overwrite` is the only operation that deletes output-directory contents.
 - `clean` decisions must not depend on thread scheduling, hash-completion order, filesystem iteration order, or dictionary insertion order.
 - All input paths in reports are POSIX paths relative to `--input-dir`. All output paths and existing-output references are POSIX paths relative to `--out-dir`.
@@ -112,7 +112,7 @@
 | Completion | `entomokit/completion.py`, `tests/test_main_cli.py` | Omit deprecated actions from generated shell completion while keeping them in help/CLI |
 | Skill notes | `skills/entomokit-workflow/references/command-profiles.md` | Factual notes for `--val-csv` and clean reports/dry-run; no workflow policy change |
 | Master design | `docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md` | Current architecture-level contracts for clean reports, segment thresholds, and train validation |
-| Version | `version.txt`, `entomokit/_version.py`, `entomokit/main.py`, `setup.py`, `tests/test_package_version.py`, `tests/test_main_cli.py`, `README.md`, `README.cn.md` | Set and verify `0.7.2` |
+| Version | `version.txt`, `entomokit/_version.py`, `entomokit/main.py`, `setup.py`, `tests/test_package_version.py`, `tests/test_main_cli.py`, `README.md`, `README.cn.md` | Set and verify `0.8.0` |
 
 ## Interfaces
 
@@ -469,7 +469,7 @@ Rules:
 - `--resume --dedup-mode none`: match by `index`/`files` `input_path` only. Without a usable manifest, do not match by mirrored output path; retain the input and warn that exact resume matching requires a manifest.
 - After a real run, merge the current `retained`, `existing`, and `dropped` rows that have a surviving representative into `index`, replacing any previous row for the same `input_path`. A dropped row's index row maps to the surviving representative output and keeps the dropped input's own source hashes, so transitive group members remain resumable. A write-error row with a surviving representative is treated the same way. Remove only rows for hash/decode errors and exhausted-group errors, which have no usable output or hash. Keep prior rows for inputs not present in the current run when their output still exists; prune missing outputs with a warning. A dry-run copies the previous `index` unchanged and adds no would-be outputs.
 - Under `--resume`, current inputs are matched directly against the cumulative index/output hashes using the current mode. Matched inputs become `status="existing"`; unmatched inputs form normal groups. Existing outputs are never deleted or rewritten. If multiple existing outputs match one input, the current-mode tie-break selects the canonical output (MD5: path; pHash: distance then path).
-- pHash grouping is an accepted O(n²) pairwise pass for `0.7.2`; do not add a BK-tree or a new dependency.
+- pHash grouping is an accepted O(n²) pairwise pass for `0.8.0`; do not add a BK-tree or a new dependency.
 
 - [ ] **Step 4: Implement representative and match selection**
 
@@ -928,11 +928,11 @@ Expected: PASS, including the existing seed, resume, NVML, and optimizer tests.
 - Modify: `docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md`
 - Modify: `version.txt`, `entomokit/_version.py`, `entomokit/main.py`, `setup.py`
 - Modify: `tests/test_package_version.py`, `tests/test_main_cli.py`
-- Modify: `README.md`, `README.cn.md` for version examples and the `0.7.2` parameter-change tables.
+- Modify: `README.md`, `README.cn.md` for version examples and the `0.8.0` parameter-change tables.
 
 **Interfaces:**
 - Consumes: the implemented CLI contracts from Tasks 1–4.
-- Produces: synchronized English/Chinese command docs, current master-design contracts, corrected skill notes, and a consistent `0.7.2` version.
+- Produces: synchronized English/Chinese command docs, current master-design contracts, corrected skill notes, and a consistent `0.8.0` version.
 
 - [ ] **Step 1: Update the clean command documents**
 
@@ -948,7 +948,7 @@ In both `docs/commands/clean.md` and `docs/commands/clean.cn.md`:
 - Document that `--resume` keeps existing outputs as-is; changing `--out-short-size` or `--out-image-format` requires `--overwrite`. State that an existing output in train can keep a duplicate out of test when resuming an already-split tree; use `--overwrite` or clean before splitting to rebalance.
 - Document `--dry-run` flow: reports only, no `cleaned_images/`, requires `--resume` on a non-empty out-dir, copies the previous `index` unchanged, and a later real run into the same directory needs `--resume`.
 - Document that per-file log lines are emitted from the finalized decisions after writes.
-- Add a `0.7.2` Version Notes entry first, describing deterministic transitive group deduplication, the report artifacts and hashes, `--dry-run`, the cumulative resume index, and the `--resume` existing-output change.
+- Add a `0.8.0` Version Notes entry first, describing deterministic transitive group deduplication, the report artifacts and hashes, `--dry-run`, the cumulative resume index, and the `--resume` existing-output change.
 
 - [ ] **Step 2: Update the segment command documents**
 
@@ -961,7 +961,7 @@ In both languages:
 - Document that Otsu/GrabCut ignore the SAM3 threshold and that their constant `1.0` scores make the post-filter ineffective in the `0..1` range.
 - Document that the no-mask reason names both thresholds.
 - Document the new COCO per-mask `score`: SAM3 writes its model score, Otsu/GrabCut write `1.0`, and VOC/YOLO have no score field. It applies to unified and separate COCO output. Note that older annotations need `--overwrite` to gain the field; `--resume` skips existing images.
-- Add a `0.7.2` Version Notes entry first.
+- Add a `0.8.0` Version Notes entry first.
 
 - [ ] **Step 3: Update the classify-train command documents**
 
@@ -975,7 +975,7 @@ In both languages:
 - Document the validation CSV SHA256 and image count in `logs/log.txt`, written before `fit()`.
 - Replace the unconditional "AutoGluon performs its own internal train/validation split" guidance with a conditional statement.
 - Document that `assets.json` is refreshed after `fit()` with `best_score` and `total_train_time`, so `fit_summary()` is populated after reload.
-- Add a `0.7.2` Version Notes entry first.
+- Add a `0.8.0` Version Notes entry first.
 
 - [ ] **Step 4: Update the augment manifest documentation**
 
@@ -983,9 +983,9 @@ In both languages:
 
 - Document the manifest's new `files` array with `original`, `augmented`, and `copy_index`.
 - State that `original` is relative to `--input-dir` and `augmented` is relative to `out-dir/images/`.
-- Add a `0.7.2` Version Notes entry first.
+- Add a `0.8.0` Version Notes entry first.
 
-**README parameter tables:** In both `README.md` and `README.cn.md`, add a `Parameter Changes in 0.7.2` / `0.7.2 参数变化` H2 after the Commands section with Key-Parameters-style tables (`Parameter | Description | Default`) for:
+**README parameter tables:** In both `README.md` and `README.cn.md`, add a `Parameter Changes in 0.8.0` / `0.8.0 参数变化` H2 after the Commands section with Key-Parameters-style tables (`Parameter | Description | Default`) for:
 - `clean --dry-run`;
 - `segment --sam3-confidence-threshold`, `--post-confidence-threshold`, and the deprecated `--confidence-threshold`;
 - `classify train --val-csv`.
@@ -1015,7 +1015,7 @@ In `skills/entomokit-workflow/references/command-profiles.md`:
 
 - [ ] **Step 7: Set the release version**
 
-Set `0.7.2` consistently in:
+Set `0.8.0` consistently in:
 
 - `version.txt`
 - `entomokit/_version.py`
@@ -1040,7 +1040,7 @@ python -m entomokit.main classify train --help
 Expected:
 
 - `tests/test_docs.py` passes, including `test_command_option_coverage` for both languages.
-- Version output is `entomokit 0.7.2`.
+- Version output is `entomokit 0.8.0`.
 - Each help output lists the new options and the deprecated alias.
 
 - [ ] **Step 9: Run the full suite**

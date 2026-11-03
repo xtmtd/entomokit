@@ -205,7 +205,7 @@ entomokit clean --input-dir images/raw/ --out-dir cleaned/ \
 
 ## Version Notes
 
-- `0.7.2`: deduplication now uses deterministic connected groups and writes
+- `0.8.0`: deduplication now uses deterministic connected groups and writes
   `filter_decisions.csv`, `retained_images.csv`, `dropped_images.csv`, and
   `clean_manifest.json` with a cumulative resume `index`; `--dry-run` was added;
   per-file paths and hashes are recorded; `--resume` matches the cumulative index

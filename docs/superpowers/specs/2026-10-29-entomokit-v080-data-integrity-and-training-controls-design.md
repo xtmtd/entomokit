@@ -1,8 +1,8 @@
-# EntomoKit v0.7.2 Data Integrity and Training Controls Design
+# EntomoKit v0.8.0 Data Integrity and Training Controls Design
 
 ## Goal
 
-Release EntomoKit `0.7.2` with four related corrections:
+Release EntomoKit `0.8.0` with four related corrections:
 
 1. `clean` records every keep/drop decision in structured, diffable reports instead of prose-only logs.
 2. `clean` deduplication is deterministic and group-based rather than first-thread-wins and pair-based.
@@ -16,7 +16,7 @@ The release also aligns English and Chinese command documentation with the `0.7.
 - `clean`: per-input decision reports with hashes, deterministic group deduplication, optional dry-run, deterministic output naming, write-failure promotion with partial-file cleanup, cumulative-index resume matching, and augment manifest file rows.
 - `segment`: `--sam3-confidence-threshold`, `--post-confidence-threshold`, and a deprecated `--confidence-threshold` alias, with a corrected no-warning default and a corrected no-mask reason.
 - `classify train`: `--val-csv`, validation checks, `tuning_data` wiring, and validation provenance logging before `fit()`.
-- Documentation: affected command documents, current master design, Version Notes, corrected workflow-skill factual notes, and version declarations for `0.7.2`.
+- Documentation: affected command documents, current master design, Version Notes, corrected workflow-skill factual notes, and version declarations for `0.8.0`.
 
 ## Non-goals
 
@@ -314,10 +314,10 @@ After `fit()` returns, entomokit backfills the model's `assets.json` with `best_
 - Do not add a changelog.
 - Update both languages for every changed command: `clean`, `segment`, `classify-train`, and `augment` (because its manifest gains `files`).
 - Update the current master design (`2026-03-24-entomokit-refactor-design.md`) with architecture-level contracts; do not duplicate full parameter tables.
-- Add a short `Parameter Changes in 0.7.2` section to `README.md` and `README.cn.md` with Key-Parameters-style tables for `clean --dry-run`, the segment thresholds, and `classify train --val-csv`. Keep it outside the Commands H2 so the README command-index contract still sees only command rows; the command docs remain the full parameter reference.
+- Add a short `Parameter Changes in 0.8.0` section to `README.md` and `README.cn.md` with Key-Parameters-style tables for `clean --dry-run`, the segment thresholds, and `classify train --val-csv`. Keep it outside the Commands H2 so the README command-index contract still sees only command rows; the command docs remain the full parameter reference.
 - Correct the factual command notes in `skills/entomokit-workflow/references/command-profiles.md` for `--val-csv` and clean reports/dry-run. Do not change workflow policy.
 - Do not edit historical plans or completed specs.
-- Set the release version to `0.7.2` in `version.txt`, `entomokit/_version.py`, the `entomokit/main.py` fallback, `setup.py`, and version tests.
+- Set the release version to `0.8.0` in `version.txt`, `entomokit/_version.py`, the `entomokit/main.py` fallback, `setup.py`, and version tests.
 - Do not change workflow-skill policy for this patch.
 
 ## Compatibility and Migration
@@ -328,7 +328,7 @@ After `fit()` returns, entomokit backfills the model's `assets.json` with `best_
 - Existing Otsu/GrabCut behavior is preserved.
 - Existing `classify train` behavior is preserved when `--val-csv` is omitted; training-side CSV leniency is unchanged.
 - `augment_manifest.json` gains a `files` array; existing run-level fields remain.
-- COCO annotations written before `0.7.2` do not gain per-mask `score` under `--resume`, because existing images are skipped; rerun with `--overwrite` to regenerate them.
+- COCO annotations written before `0.8.0` do not gain per-mask `score` under `--resume`, because existing images are skipped; rerun with `--overwrite` to regenerate them.
 - `clean` deduplication results can change because groups are transitive rather than pairwise. This is intentional and must be called out in Version Notes.
 - `--resume` now prefers the cumulative manifest `index`, so resized/converted outputs can be recognized and subset runs do not lose prior index rows. Without a manifest, MD5 output-hash matching remains limited and warns.
 - `--resume` may report matching inputs as `existing` instead of writing duplicates.
@@ -374,13 +374,13 @@ After `fit()` returns, entomokit backfills the model's `assets.json` with `best_
 - A completed training run writes non-null `best_score` and `total_train_time` to `assets.json`, and a reloaded `fit_summary()` reports them.
 - `tests/test_docs.py` passes with both languages updated.
 - Generated bash/zsh/fish completion omits `--confidence-threshold` while `segment --help` still documents it as the deprecated alias.
-- README.md and README.cn.md contain the `0.7.2` parameter-change tables, and `test_readme_command_index` still passes.
+- README.md and README.cn.md contain the `0.8.0` parameter-change tables, and `test_readme_command_index` still passes.
 - Python 3.9 syntax review: no PEP 604 unions in modules without `from __future__ import annotations`.
 - Full test suite passes; unavailable optional backends are reported as blockers, not hidden with skips or xfail.
 
 ## Risks and Trade-offs
 
-- **O(n²) pHash grouping:** exact transitive semantics at the cost of scaling. Acceptable for `0.7.2`; document the boundary.
+- **O(n²) pHash grouping:** exact transitive semantics at the cost of scaling. Acceptable for `0.8.0`; document the boundary.
 - **Split-aware representative selection:** a heuristic based on exact path components. Datasets with different split names fall back to path order.
 - **Held-out-first removes training-side duplicates:** keeping the test/val copy prevents leakage, but the training set loses that sample entirely rather than just its duplicate.
 - **Existing outputs always win under `--resume`:** this avoids duplicate writes but may not rebalance splits. Users who need a fresh layout should use `--overwrite`.
@@ -406,13 +406,13 @@ After `fit()` returns, entomokit backfills the model's `assets.json` with `best_
 - **Warn whenever post < model:** rejected because the default `post=0.0` would warn on every SAM3 run. Warn only for `0 < post < model`.
 - **Use `None` as the CLI default for `--post-confidence-threshold`:** rejected because the documented default is `0.0` and the runtime schema/parameter card would disagree. Resolution handles the deprecated alias instead.
 - **Rely only on output-file hashing for resume:** rejected because resizing/conversion can change pixel MD5; the cumulative manifest `index` is the primary source.
-- **Add a separate `clean_index.json`:** rejected for `0.7.2` to avoid a fifth report artifact; the cumulative `index` lives in `clean_manifest.json` while `files` stays per-run.
+- **Add a separate `clean_index.json`:** rejected for `0.8.0` to avoid a fifth report artifact; the cumulative `index` lives in `clean_manifest.json` while `files` stays per-run.
 - **Match `dedup_mode="none"` by mirrored output path without a manifest:** rejected because same-stem, different-extension inputs would be conflated; require a manifest for exact `none` resume.
 
 ## References
 
-- Implementation plan: `docs/superpowers/plans/2026-10-29-entomokit-v072-data-integrity-and-training-controls.md`
-- Chinese plan: `docs/superpowers/plans/2026-10-29-entomokit-v072-data-integrity-and-training-controls.cn.md`
+- Implementation plan: `docs/superpowers/plans/2026-10-29-entomokit-v080-data-integrity-and-training-controls.md`
+- Chinese plan: `docs/superpowers/plans/2026-10-29-entomokit-v080-data-integrity-and-training-controls.cn.md`
 - Documentation conventions: `docs/superpowers/specs/2026-10-01-entomokit-documentation-conventions-design.md`
 - Current master design: `docs/superpowers/specs/2026-03-24-entomokit-refactor-design.md`
 - phyloAI filter reference: `phyloAI/phyloai/pretree/filter.py` (`retained_loci.csv`, `dropped_loci.csv`, `filter_decisions.csv`, `result.json`)

@@ -176,7 +176,7 @@ This policy applies to the directory-oriented commands (`extract-frames`, `segme
   `classify predict`, `classify evaluate`, `classify cam` and `classify export-onnx`
   write `out-dir/log.txt`, while `classify train` and `classify embed` write
   `out-dir/logs/log.txt`. `doctor`, `update` and `completion` write no log file.
-  The header records `EntomoKit version:` (for example `0.7.2`), `Commit:`, the full
+  The header records `EntomoKit version:` (for example `0.8.0`), `Commit:`, the full
   command line, a timestamp and all parameter values, followed by the runtime
   output. `--verbose` enables debug-level logging.
 - **Interruption**: `measure` and `augment` stop at the next image boundary — they
@@ -244,7 +244,7 @@ These require the `classify` extra.
 | `classify cam` | Generate GradCAM heatmaps | [reference](docs/commands/classify-cam.md) |
 | `classify export-onnx` | Export a model to ONNX format | [reference](docs/commands/classify-export-onnx.md) |
 
-## Parameter Changes in 0.7.2
+## Parameter Changes in 0.8.0
 
 The command references contain the full parameter contracts; this table summarizes
 the options added or changed in this release.

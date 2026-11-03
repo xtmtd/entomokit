@@ -196,7 +196,7 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
 
 ## Version Notes
 
-- `0.7.2`: added `--val-csv` to pass an explicit validation set to AutoMM as
+- `0.8.0`: added `--val-csv` to pass an explicit validation set to AutoMM as
   `tuning_data`, with path-overlap, duplicate-row, empty-file, missing-image, and
   unknown-label checks plus validation CSV provenance in `logs/log.txt`.
 - `0.7.0`: `--seed` was added for reproducible AutoMM training.

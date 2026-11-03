@@ -177,6 +177,6 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
 
 ## 版本注记
 
-- `0.7.2`：新增 `--val-csv`，把显式验证集作为 `tuning_data` 传给 AutoMM；加入路径
+- `0.8.0`：新增 `--val-csv`，把显式验证集作为 `tuning_data` 传给 AutoMM；加入路径
   重叠、重复行、空文件、缺失图片、未知 label 检查，并在 `logs/log.txt` 记录验证集来源。
 - `0.7.0`：新增 `--seed`，用于可复现的 AutoMM 训练。

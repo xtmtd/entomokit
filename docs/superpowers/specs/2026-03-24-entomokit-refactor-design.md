@@ -1,7 +1,7 @@
 # entomokit 重构设计文档
 
 **日期**: 2026-03-24\
-**最后更新**: 2026-10-01（文档约定：命令参考迁至 `docs/commands/`、README 边界、help 链接与长期文档规则）\
+**最后更新**: 2026-11-03（0.8.0：`clean` 决策与报告、`segment` 双阈值、`classify train` 显式验证集已并入 §5.1/§5.2；依赖清单改为以 `setup.py` 为准）\
 **状态**: 已确认；重构已在 0.7.0 实现。本文档保留仍然有效的架构决策与跨模块约束，历史决策不再重复；当前用户参数与行为以 `docs/commands/` 参考为准。
 
 ---
@@ -92,29 +92,13 @@ entry_points={
 
 ### 顶层 dispatcher（`entomokit/main.py`）
 
-```python
-import argparse
+`entomokit/main.py` 的 `_build_parser()` 按 §2 的顺序注册顶层命令：`extract-frames`、
+`segment`、`measure`、`synthesize`、`clean`、`augment`、`split-csv`、`classify`、
+`doctor`、`update`、`completion`。`classify` 组由 `entomokit/classify/__init__.py`
+的 `register()` 注册 `train`/`predict`/`evaluate`/`embed`/`cam`/`export-onnx`。
 
-def main():
-    parser = argparse.ArgumentParser(prog="entomokit")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # 注册各命令
-    from entomokit import segment, extract_frames, clean, split_csv, synthesize
-    from entomokit.classify import register as register_classify
-
-    segment.register(subparsers)
-    extract_frames.register(subparsers)
-    clean.register(subparsers)
-    split_csv.register(subparsers)
-    synthesize.register(subparsers)
-    register_classify(subparsers)
-
-    args = parser.parse_args()
-    args.func(args)
-```
-
-每个命令模块暴露 `register(subparsers)` 函数和对应的 `run(args)` 函数。
+每个命令模块暴露 `register(subparsers)` 函数和对应的 `run(args)` 函数；`main.py`
+另负责把项目根加入 `sys.path`、初始化 help 样式与命令分发。
 
 ### classify 组 dispatcher（`entomokit/classify/__init__.py`）
 
@@ -221,7 +205,7 @@ EntomoKit 后置过滤。`--confidence-threshold` 是后置过滤的弃用别名
 `split-csv` 以 `--raw-image-csv` 为准，按 `ratio` 或 `count` 模式生成 `train.csv`、可选的 `val.csv`、`test.known.csv` 与可选的 `test.unknown.csv`，并写 `class_count/` 统计；`--copy-images` 时按划分把图像复制到 `images/{train,val,test_known,test_unknown}/`。完整参数与输出见 [split-csv 参考](../../../docs/commands/split-csv.md)。
 ### 5.2 `classify train`
 
-当前契约：AutoGluon MultiModalPredictor + timm 骨干是唯一训练路径；训练集来自 `--train-csv`。默认由 AutoGluon 内部完成验证切分（因此 `split-csv` 的 `--val-ratio`/`--val-count` 保持 0）；提供可选的 `--val-csv` 时，不再使用内部随机切分，而是把解析后的验证表作为 `fit(tuning_data=...)` 传入，并在 `logs/log.txt` 记录验证 CSV 路径、文件级 SHA256、图片数与 overlap 结果。验证集在 `fit()` 前检查非空、图片存在、重复行、未知 label 与训练路径重叠；训练侧仍只要求列存在与路径解析。产物写入 `out-dir/AutogluonModels/<base-model>`，供 predict/evaluate/embed/cam/export-onnx 复用；`--resume` 需在同一 `--base-model` 下延长轮数上限。
+当前契约：AutoGluon MultiModalPredictor + timm 骨干是唯一训练路径；训练集来自 `--train-csv`。未提供 `--val-csv` 时由 AutoGluon 内部完成随机验证切分，此时 `split-csv` 的 `--val-ratio`/`--val-count` 保持 0；提供可选的 `--val-csv` 时（通常由 `split-csv` 的 `--val-ratio`/`--val-count` 生成 `val.csv`），不再使用内部随机切分，而是把解析后的验证表作为 `fit(tuning_data=...)` 传入，并在 `logs/log.txt` 记录验证 CSV 路径、文件级 SHA256、图片数与 overlap 结果。验证集在 `fit()` 前检查非空、图片存在、重复行、未知 label 与训练路径重叠；训练侧仍只要求列存在与路径解析。产物写入 `out-dir/AutogluonModels/<base-model>`，供 predict/evaluate/embed/cam/export-onnx 复用；`--resume` 需在同一 `--base-model` 下延长轮数上限。
 
 当前参数、默认值与增强预设语义见 [classify train 参考](../../../docs/commands/classify-train.md)；原始实现任务见 [Phase 3 plan](../plans/2026-03-24-phase3-classify.md)（历史）。
 ### 5.3 `classify predict`
@@ -286,25 +270,20 @@ EntomoKit 后置过滤。`--confidence-threshold` 是后置过滤的弃用别名
 
 ## 8. 依赖管理
 
-AutoGluon 和 grad-cam 是重型依赖，通过 `setup.py` 的 `extras_require` 管理，不作为默认安装依赖：
+重型依赖（AutoGluon、albumentations、grad-cam 等）通过 `setup.py` 的
+`extras_require` 管理，不作为默认安装依赖。**extra 分组、包清单与版本下限以
+`setup.py` 为唯一来源**，本文档不复制，避免文档与安装元数据漂移。
 
-```python
-extras_require={
-    "segmentation": [...],
-    "cleaning": [...],
-    "video": [...],
-    "data": [...],
-    "classify": [
-        "autogluon.multimodal",
-        "timm",
-        "umap-learn",
-        "grad-cam",
-        "onnxruntime",
-        "scikit-learn",
-    ],
-    "dev": [...],
-}
-```
+| extra | 用途 |
+|---|---|
+| `segmentation` | SAM3 分割（torch、opencv、pycocotools 等） |
+| `synthesis` | 图像合成 |
+| `measurement` | 形态学测量 |
+| `cleaning` | 去重（imagehash） |
+| `augment` | 图像增强（albumentations） |
+| `video` | 视频帧提取 |
+| `classify` | AutoGluon、timm、UMAP、grad-cam、ONNX |
+| `dev` | 测试与覆盖率 |
 
 安装方式：
 ```bash
@@ -345,6 +324,7 @@ pip install -e ".[classify]"
 - 当前参数：以 CLI 实现与运行时 schema 为准；命令参考是散文版完整参考，本设计不复制参数表。
 - help 边界：每个 parser 的 description 末尾追加文档链接（`entomokit/help_style.py` 的 `DOCS_BASE_URL` 与 `DOC_LINKS` 唯一定义），逐项 option help 不改写。
 - reference-first：细节已有专项设计时，本设计只保留结论与链接；plan 只作历史证据，不承载当前不变量。
+- 变更粒度：只有引入新的跨模块契约、新命令/子命令组，或改变目录/入口架构时，才新建专项 design。参数新增、输出字段修正、行为微调这类零散变更，直接更新本文档对应小节与命令参考，并在 Version Notes 记录版本即可；被本文档吸收后的专项 design 只作为历史证据保留。
 - 新增命令：注册、双语参考、README 索引行、help 指针、Version Notes 与文档检查必须同批完成（详见设计 §6）。
 
 ---

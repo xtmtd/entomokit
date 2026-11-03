@@ -135,9 +135,11 @@ Optional. Default `0`. Random seed passed to AutoMM for reproducible training.
   `vit_base_patch16_224`; any other timm name works too
   (https://huggingface.co/timm).
 - Training reads the labelled training split only; when the data comes from
-  `entomokit split-csv`, keep `--val-ratio`/`--val-count` at `0` because AutoGluon
-  performs its own internal train/validation split. If `--val-csv` is supplied,
-  that internal split is disabled and the CSV is passed as `tuning_data`.
+  `entomokit split-csv` and you are not supplying `--val-csv`, keep
+  `--val-ratio`/`--val-count` at `0` because AutoGluon performs its own internal
+  train/validation split. If you plan to supply `--val-csv`, generate `val.csv`
+  with a non-zero `--val-ratio`/`--val-count` and pass that file; supplying it
+  disables the internal split and the CSV is used as `tuning_data`.
 - Training-side CSV loading stays lenient: the `image` and `label` columns and path
   resolution are required, but missing training images are not rejected. The
   stricter existence/duplicate/label/overlap checks apply to `--val-csv` only.

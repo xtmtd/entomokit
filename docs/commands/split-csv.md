@@ -112,9 +112,10 @@ splitting.
 - `--mode ratio` uses the `*-ratio` options; `--mode count` uses the `*-count`
   options.
 - `--copy-images` requires `--images-dir`.
-- Keep `--val-ratio` and `--val-count` at `0` when the output feeds
-  `entomokit classify train`; AutoGluon performs its own internal train/validation
-  split.
+- Leave `--val-ratio` and `--val-count` at `0` when the output feeds
+  `entomokit classify train` without `--val-csv`; AutoGluon then performs its own
+  internal train/validation split. Set one of them above `0` only when you intend
+  to pass the generated `val.csv` to `classify train --val-csv`.
 
 ## Outputs
 

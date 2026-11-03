@@ -95,8 +95,9 @@ unknown 划分。类别会被随机打乱并整类移入 unknown 划分，直到
   CSV；`--images-dir` 只是 `--copy-images` 的复制来源，不会解析或改写这些值。
 - `--mode ratio` 使用 `*-ratio` 参数；`--mode count` 使用 `*-count` 参数。
 - `--copy-images` 需要 `--images-dir`。
-- 若输出要交给 `entomokit classify train`，请把 `--val-ratio` 与 `--val-count` 保持为
-  `0`；AutoGluon 会自行执行内部训练/验证划分。
+- 若输出要交给不带 `--val-csv` 的 `entomokit classify train`，请把 `--val-ratio` 与
+  `--val-count` 保持为 `0`；此时 AutoGluon 会自行执行内部训练/验证划分。只有当你要把
+  生成的 `val.csv` 传给 `classify train --val-csv` 时，才把其中一项设为大于 0。
 
 ## 输出
 

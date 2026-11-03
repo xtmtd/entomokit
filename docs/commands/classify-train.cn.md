@@ -124,9 +124,10 @@ entomokit classify train --train-csv data/train.csv --images-dir data/images/ \
   `convnextv2_small`、`convnextv2_base`、`resnet18`、`resnet50`、`resnet101`、
   `efficientnet_b0`-`efficientnet_b7`、`vit_small_patch16_224` 与
   `vit_base_patch16_224`；任何其它 timm 名称同样可用（https://huggingface.co/timm）。
-- 训练只读取带标签的训练划分；若数据来自 `entomokit split-csv`，请把
-  `--val-ratio`/`--val-count` 保持为 `0`，因为 AutoGluon 会自行执行内部训练/验证划分。
-  如果提供 `--val-csv`，内部切分会被关闭，该 CSV 作为 `tuning_data` 传入。
+- 训练只读取带标签的训练划分；若数据来自 `entomokit split-csv` 且不提供 `--val-csv`，
+  请把 `--val-ratio`/`--val-count` 保持为 `0`，因为 AutoGluon 会自行执行内部训练/验证
+  划分。若计划提供 `--val-csv`，用非零的 `--val-ratio`/`--val-count` 生成 `val.csv` 并
+  传入该文件；提供后内部切分会被关闭，该 CSV 作为 `tuning_data` 使用。
 - 训练侧 CSV 加载保持宽松：要求 `image`、`label` 列并解析路径，但不拒绝训练集缺失图片。
   更严格的 existence/duplicate/label/overlap 检查只适用于 `--val-csv`。
 

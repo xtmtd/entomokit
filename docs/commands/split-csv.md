@@ -86,13 +86,15 @@ when that flag is set. It never resolves or rewrites the CSV `image` values.
 
 ### `--copy-images`
 
-Optional. Default off (boolean flag without a value). Copy the images into
-`out_dir/images/{split}/` subdirectories. Only the file name is kept — the source
-parent directory is dropped — and there is no collision check, so a `beetles/a.jpg`
-and a `flies/a.jpg` that land in the same split both target
-`images/<split>/a.jpg` and the later copy overwrites the earlier one. Basenames must
-therefore be unique within each split; renaming or checking collisions would be a
-code change and needs separate authorization.
+Optional. Default off (boolean flag without a value). Copy images into
+`out_dir/images/{split}/` subdirectories. The legacy flat destination is retained
+unless different source files in the same split share a basename. Only that collision
+group preserves source-relative parent paths; for example, `beetles/a.jpg` and
+`flies/a.jpg` become `images/<split>/beetles/a.jpg` and `images/<split>/flies/a.jpg`.
+The split CSV `image` values are not rewritten. Existing source path resolution,
+including paths through parent-directory symlinks and `..` components, is unchanged.
+Before copying, the command rejects conflicting output destinations and file/directory
+destination-prefix conflicts.
 
 ### `--overwrite`
 
@@ -169,14 +171,13 @@ entomokit split-csv --raw-image-csv data/images.csv --mode count \
   [common behaviours](../../README.md#common-behaviours).
 - `--min-count-per-class` and `--max-count-per-class` are only applied by
   `--mode count`; the default `ratio` branch ignores them.
-- With `--copy-images` the copies are flattened to the file name (see the parameter
-  note): two inputs whose basenames match inside one split silently overwrite each
-  other.
-- The copied tree is not a self-contained relocatable dataset: the split CSVs keep
-  the original `image` values, so `beetles/a.jpg` copied to `images/train/a.jpg` is
-  still recorded as `beetles/a.jpg`. Pointing a later command's image root at
-  `out_dir/images/` looks for `images/train/beetles/a.jpg` and fails; rewrite the CSV
-  or keep using the original `--images-dir`.
+- With `--copy-images`, only same-split basename collision groups retain their source
+  parent directories; other files keep the legacy flat destination. Repeated rows for
+  the same CSV path still map to one copied file.
+- The split CSVs always preserve the input `image` values. Continue using the original
+  `--images-dir` with those CSVs. The copied tree is supplemental and is not necessarily
+  relocatable: a non-colliding nested path such as `beetles/b.jpg` remains copied to
+  `images/train/b.jpg`, not `images/train/beetles/b.jpg`.
 - A fixed `--seed` reproduces the same split for the same input CSV.
 - A non-empty `--out-dir` stops with an error unless `--overwrite` is passed;
   `split-csv` has no `--resume` and never reuses an existing output directory.

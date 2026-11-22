@@ -1,11 +1,27 @@
 """Dataset splitting utilities."""
 
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+
+class CopyImageDestinationCollisionError(ValueError):
+    """Raised when distinct sources resolve to the same copied image path."""
+
+
+def _collision_relative_path(image_path: str) -> Path:
+    """Map a collision-group path beneath a split output directory."""
+    source_path = Path(image_path)
+    parts = [
+        part
+        for part in source_path.parts
+        if part not in {source_path.anchor, ".", ".."} and part
+    ]
+    return Path(*parts) if parts else Path(source_path.name)
 
 
 class DatasetSplitter:
@@ -238,25 +254,93 @@ class DatasetSplitter:
         }
 
     def _copy_images(self, images_dir: Path, splits: dict) -> None:
-        """Copy images into out_dir/images/{split}/ subdirs.
-
-        Args:
-            images_dir: Source image directory.
-            splits: Dict mapping split name -> DataFrame with 'image' column.
-        """
-        import shutil
-
+        """Copy images, retaining parents only for colliding basenames."""
         images_root = self.out_dir / "images"
+        colliding_by_split: dict[str, set[str]] = {}
+
+        # Pass 1 counts distinct source paths per basename without storing every row.
+        for split_name, df in splits.items():
+            if df is None or len(df) == 0:
+                continue
+            basename_sources: dict[str, tuple[str, str | None]] = {}
+            for img_path in df["image"]:
+                src = images_dir / img_path
+                if not src.exists():
+                    continue
+                source_value = Path(img_path)
+                basename_key = os.path.normcase(source_value.name)
+                source_path = str(img_path)
+                previous = basename_sources.get(basename_key)
+                if previous is None:
+                    basename_sources[basename_key] = (source_path, None)
+                elif source_path != previous[0] and source_path != previous[1]:
+                    basename_sources[basename_key] = (previous[0], source_path)
+            colliding_by_split[split_name] = {
+                basename
+                for basename, (_first, second) in basename_sources.items()
+                if second is not None
+            }
+
+        # Pass 2 validates every destination before the first copy is written.
         for split_name, df in splits.items():
             if df is None or len(df) == 0:
                 continue
             split_dir = images_root / split_name
-            split_dir.mkdir(parents=True, exist_ok=True)
+            colliding_basenames = colliding_by_split[split_name]
+            destinations: dict[str, str] = {}
             for img_path in df["image"]:
                 src = images_dir / img_path
-                dst = split_dir / Path(img_path).name
-                if src.exists():
-                    shutil.copy2(src, dst)
+                if not src.exists():
+                    continue
+                source_value = Path(img_path)
+                basename_key = os.path.normcase(source_value.name)
+                target_relative = (
+                    _collision_relative_path(str(img_path))
+                    if basename_key in colliding_basenames
+                    else Path(source_value.name)
+                )
+                dst = split_dir / target_relative
+                key = os.path.normcase(os.path.normpath(str(dst.resolve())))
+                previous = destinations.get(key)
+                if previous is not None and previous != str(img_path):
+                    raise CopyImageDestinationCollisionError(
+                        f"{previous} and {img_path} resolve to the same copied "
+                        f"image path {dst} in split {split_name}"
+                    )
+                destinations[key] = str(img_path)
+
+            ordered_destinations = sorted(destinations.items())
+            for index, (key, source) in enumerate(ordered_destinations[:-1]):
+                next_key, next_source = ordered_destinations[index + 1]
+                if next_key.startswith(key + os.sep):
+                    raise CopyImageDestinationCollisionError(
+                        f"{source} and {next_source} have conflicting copied image "
+                        f"paths {key} and {next_key} in split {split_name}"
+                    )
+
+        # Pass 3 copies directly from the DataFrames; no per-image plan is cached.
+        created_dirs: set[Path] = set()
+        for split_name, df in splits.items():
+            if df is None or len(df) == 0:
+                continue
+            split_dir = images_root / split_name
+            colliding_basenames = colliding_by_split[split_name]
+            for img_path in df["image"]:
+                src = images_dir / img_path
+                if not src.exists():
+                    continue
+                source_value = Path(img_path)
+                basename_key = os.path.normcase(source_value.name)
+                target_relative = (
+                    _collision_relative_path(str(img_path))
+                    if basename_key in colliding_basenames
+                    else Path(source_value.name)
+                )
+                dst = split_dir / target_relative
+                if dst.parent not in created_dirs:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    created_dirs.add(dst.parent)
+                shutil.copy2(src, dst)
 
     def split(
         self,

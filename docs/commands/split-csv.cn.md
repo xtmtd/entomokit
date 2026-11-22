@@ -76,10 +76,10 @@ unknown 划分。类别会被随机打乱并整类移入 unknown 划分，直到
 
 ### `--copy-images`
 
-可选。默认关闭（不带取值的布尔开关）。把图像复制到 `out_dir/images/{split}/` 子目录下。
-只保留文件名——源父目录会被丢弃——而且没有冲突检查：落入同一划分的 `beetles/a.jpg` 与
-`flies/a.jpg` 都指向 `images/<split>/a.jpg`，后复制者覆盖先前者。因此同一划分内 basename
-必须唯一；增加重命名或冲突检查属于代码改动，需要单独授权。
+可选。默认关闭（不带取值的布尔开关）。把图像复制到 `out_dir/images/{split}/` 子目录下。旧版平铺目标
+保持不变；只有同一划分内不同源文件 basename 冲突的组才保留相对父目录，例如 `beetles/a.jpg` 与
+`flies/a.jpg` 分别写入 `images/<split>/beetles/a.jpg` 和 `images/<split>/flies/a.jpg`。CSV 值不改。
+源路径仍按原行为解析，包括父目录 symlink 与 `..` 分量；复制前只拒绝冲突目标和文件/目录前缀冲突。
 
 ### `--overwrite`
 
@@ -150,12 +150,10 @@ entomokit split-csv --raw-image-csv data/images.csv --mode count \
   [通用行为](../../README.cn.md#common-behaviours)。
 - `--min-count-per-class` 与 `--max-count-per-class` 只在 `--mode count` 下生效；默认的
   `ratio` 分支会忽略它们。
-- 使用 `--copy-images` 时副本会平铺为文件名（见参数说明）：同一划分内 basename 相同的两个
-  输入会静默互相覆盖。
-- 复制出的目录不是可直接重定位的自包含数据集：划分 CSV 仍保留原始 `image` 值，因此
-  `beetles/a.jpg` 复制到 `images/train/a.jpg` 后，CSV 里仍写作 `beetles/a.jpg`。把后续
-  命令的图像根目录指向 `out_dir/images/` 会去找 `images/train/beetles/a.jpg` 而失败；
-  请改写 CSV，或继续使用原始 `--images-dir`。
+- 使用 `--copy-images` 时，只有同一划分内 basename 冲突组会保留源父目录；其他文件仍平铺，重复行仍
+  指向同一目标。
+- 划分 CSV 保留输入 `image` 值；后续命令直接读取 CSV 时继续使用原始 `--images-dir`。复制目录只是
+  补充副本，不保证能单独作为完整数据集根目录，因为非冲突嵌套文件仍位于平铺目标。
 - 固定 `--seed` 时，同一输入 CSV 会得到相同的划分。
 - `--out-dir` 非空时必须显式传入 `--overwrite`，否则直接报错退出；`split-csv` 没有
   `--resume`，也从不复用已有的输出目录。

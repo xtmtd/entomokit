@@ -30,9 +30,12 @@ setup(
         "synthesis": [
             "supervision>=0.22.0",
             "scipy>=1.10.0",
+            "scikit-image>=0.21.0",
+            "opencv-python>=4.8.0",
         ],
         "measurement": [
             "scipy>=1.10.0",
+            "scikit-image>=0.21.0",
         ],
         "cleaning": [
             "imagehash",

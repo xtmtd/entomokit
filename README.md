@@ -60,9 +60,12 @@ Command extras:
 | `.[classify]` | `classify train/predict/evaluate/embed/cam/export-onnx` (AutoMM, timm, GradCAM, UMAP, ONNX) |
 | `.[dev]` | pytest and coverage |
 
-`measure` and `synthesize` also import `scikit-image`, which neither the
-`measurement` nor the `synthesis` extra declares; install `.[segmentation]` (which
-declares it) or add `scikit-image` explicitly alongside those extras.
+Install only the extra for the command you need:
+
+```bash
+pip install -e ".[measurement]"  # measure
+pip install -e ".[synthesis]"    # synthesize
+```
 
 Install several at once, for example the full development set:
 

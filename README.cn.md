@@ -57,9 +57,12 @@ uv pip install -e .
 | `.[classify]` | `classify train/predict/evaluate/embed/cam/export-onnx`（AutoMM、timm、GradCAM、UMAP、ONNX） |
 | `.[dev]` | pytest 与覆盖率 |
 
-`measure` 与 `synthesize` 还会导入 `scikit-image`，而 `measurement` 与 `synthesis`
-两个附加依赖都没有声明它；请同时安装声明了它的 `.[segmentation]`，或在这些附加依赖之外
-显式加入 `scikit-image`。
+只需为要使用的命令安装对应附加依赖：
+
+```bash
+pip install -e ".[measurement]"  # measure
+pip install -e ".[synthesis]"    # synthesize
+```
 
 可一次安装多项，例如完整的开发集合：
 

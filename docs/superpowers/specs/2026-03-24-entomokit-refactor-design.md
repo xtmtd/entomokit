@@ -202,7 +202,7 @@ EntomoKit 后置过滤。`--confidence-threshold` 是后置过滤的弃用别名
 
 ### `entomokit split-csv` — 划分输出
 
-`split-csv` 以 `--raw-image-csv` 为准生成各划分 CSV 与 `class_count/`。`--copy-images` 把图片写入 `images/{split}/`；为兼容旧输出，仅同一划分内不同源文件 basename 冲突组保留相对父目录，其他目标仍平铺。CSV `image` 值不改写；冲突组可用split根目录加CSV路径定位，其他文件沿用旧basename路径。复制前线性预检所有目标。完整契约见 [split-csv 参考](../../../docs/commands/split-csv.md)。
+`split-csv` 根据 `--raw-image-csv` 生成各划分 CSV 与 `class_count/`。使用 `--copy-images` 时，图像副本写入 `images/{split}/`。同一划分中不同文件夹里的同名图片副本会保留各自的文件夹路径，其他图片仍保持原有的平铺布局。划分 CSV 中的 `image` 值保持不变。完整参数说明见 [split-csv 参考](../../../docs/commands/split-csv.md)。
 ### 5.2 `classify train`
 
 当前契约：AutoGluon MultiModalPredictor + timm 骨干是唯一训练路径；训练集来自 `--train-csv`。未提供 `--val-csv` 时由 AutoGluon 内部完成随机验证切分，此时 `split-csv` 的 `--val-ratio`/`--val-count` 保持 0；提供可选的 `--val-csv` 时（通常由 `split-csv` 的 `--val-ratio`/`--val-count` 生成 `val.csv`），不再使用内部随机切分，而是把解析后的验证表作为 `fit(tuning_data=...)` 传入，并在 `logs/log.txt` 记录验证 CSV 路径、文件级 SHA256、图片数与 overlap 结果。验证集在 `fit()` 前检查非空、图片存在、重复行、未知 label 与训练路径重叠；训练侧仍只要求列存在与路径解析。产物写入 `out-dir/AutogluonModels/<base-model>`，供 predict/evaluate/embed/cam/export-onnx 复用；`--resume` 需在同一 `--base-model` 下延长轮数上限。

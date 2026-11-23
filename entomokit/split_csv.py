@@ -120,8 +120,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(args: argparse.Namespace) -> None:
     from pathlib import Path
     from src.common.cli import check_output_dir, setup_shutdown_handler, save_log
-    from src.splitting.splitter import DatasetSplitter
-
+    from src.splitting.splitter import (
+        CopyImageDestinationCollisionError,
+        DatasetSplitter,
+    )
     setup_shutdown_handler()
 
     if args.copy_images and not args.images_dir:
@@ -146,19 +148,24 @@ def run(args: argparse.Namespace) -> None:
         seed=args.seed,
     )
 
-    results = splitter.split(
-        mode=args.mode,
-        unknown_test_ratio=args.unknown_test_sample_ratio,
-        known_test_ratio=args.known_test_sample_ratio,
-        unknown_test_count=args.unknown_test_sample_count,
-        known_test_count=args.known_test_sample_count,
-        min_count_per_class=args.min_count_per_class,
-        max_count_per_class=args.max_count_per_class,
-        val_ratio=args.val_ratio,
-        val_count=args.val_count,
-        copy_images=args.copy_images,
-        images_dir=Path(args.images_dir) if args.images_dir else None,
-    )
+    try:
+        results = splitter.split(
+            mode=args.mode,
+            unknown_test_ratio=args.unknown_test_sample_ratio,
+            known_test_ratio=args.known_test_sample_ratio,
+            unknown_test_count=args.unknown_test_sample_count,
+            known_test_count=args.known_test_sample_count,
+            min_count_per_class=args.min_count_per_class,
+            max_count_per_class=args.max_count_per_class,
+            val_ratio=args.val_ratio,
+            val_count=args.val_count,
+            copy_images=args.copy_images,
+            images_dir=Path(args.images_dir) if args.images_dir else None,
+        )
+    except CopyImageDestinationCollisionError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
 
     print(f"All outputs saved in {out_dir}")
     print(

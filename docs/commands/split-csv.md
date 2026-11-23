@@ -86,13 +86,10 @@ when that flag is set. It never resolves or rewrites the CSV `image` values.
 
 ### `--copy-images`
 
-Optional. Default off (boolean flag without a value). Copy the images into
-`out_dir/images/{split}/` subdirectories. Only the file name is kept — the source
-parent directory is dropped — and there is no collision check, so a `beetles/a.jpg`
-and a `flies/a.jpg` that land in the same split both target
-`images/<split>/a.jpg` and the later copy overwrites the earlier one. Basenames must
-therefore be unique within each split; renaming or checking collisions would be a
-code change and needs separate authorization.
+Optional. Default off (boolean flag without a value). Copy images into
+`out_dir/images/{split}/` subdirectories. If different folders contain images with
+the same filename in one split, each copy keeps its source folder path so neither
+image overwrites the other. Other images keep the existing flat layout.
 
 ### `--overwrite`
 
@@ -169,14 +166,8 @@ entomokit split-csv --raw-image-csv data/images.csv --mode count \
   [common behaviours](../../README.md#common-behaviours).
 - `--min-count-per-class` and `--max-count-per-class` are only applied by
   `--mode count`; the default `ratio` branch ignores them.
-- With `--copy-images` the copies are flattened to the file name (see the parameter
-  note): two inputs whose basenames match inside one split silently overwrite each
-  other.
-- The copied tree is not a self-contained relocatable dataset: the split CSVs keep
-  the original `image` values, so `beetles/a.jpg` copied to `images/train/a.jpg` is
-  still recorded as `beetles/a.jpg`. Pointing a later command's image root at
-  `out_dir/images/` looks for `images/train/beetles/a.jpg` and fails; rewrite the CSV
-  or keep using the original `--images-dir`.
+- `--copy-images` does not change the split CSV paths. Continue using the original
+  `--images-dir` when reading those CSVs.
 - A fixed `--seed` reproduces the same split for the same input CSV.
 - A non-empty `--out-dir` stops with an error unless `--overwrite` is passed;
   `split-csv` has no `--resume` and never reuses an existing output directory.
